@@ -1,2 +1,3 @@
 *.dot
 build/
+.cache/
