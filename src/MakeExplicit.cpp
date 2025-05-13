@@ -155,6 +155,9 @@ private:
 
 public:
   CreateContinuationFuns(IRFunction &F) {
+    F.cleanVars();
+    outs() << "Root (init):\n";
+    F.printVars(outs());
     createSyncPaths(F);
 
     if (Paths.size() == 1) {
@@ -408,6 +411,7 @@ struct FinalizeExplicitCPS {
           IS = dyn_cast<ISpawnIRExpr>(SS->Src.get());
           if (IS) {
             Dest = SS->Dest.get();
+            SS->Dest.release();
             SS->Src.release();
           }
         }

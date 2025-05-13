@@ -72,6 +72,7 @@ public:
     EXK_LVAL_INDEX,
     EXK_LVAL_DREF,
     EXK_LVAL_LAST,
+    EXK_CAST,
     EXK_CALL
   };
 
@@ -334,6 +335,19 @@ public:
   LiteralIRExpr(clang::Expr *Lit) : Lit(Lit), IRExpr(EXK_LITERAL) {}
 
   static bool classof(const IRExpr *E) { return E->getKind() == EXK_LITERAL; }
+
+  virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
+  virtual IRExpr* clone() override;
+};
+
+struct CastIRExpr : IRExpr {
+private: 
+  IRType CastType;
+public:
+  std::unique_ptr<IRExpr> E;
+  CastIRExpr(IRType CastType, IRExpr *E) : CastType(CastType), E(E), IRExpr(EXK_CAST) {}
+
+  static bool classof(const IRExpr *E) { return E->getKind() == EXK_CAST; }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
   virtual IRExpr* clone() override;
@@ -642,6 +656,7 @@ class IRExprVisitor {
         case IRExpr::EXK_LVAL_ACCESS: DerivedThis->VisitAccess(llvm::dyn_cast<AccessIRExpr>(E)); return;
         case IRExpr::EXK_LVAL_DREF: DerivedThis->VisitDRef(llvm::dyn_cast<DRefIRExpr>(E)); return;
         case IRExpr::EXK_LVAL_INDEX: DerivedThis->VisitIndex(llvm::dyn_cast<IndexIRExpr>(E)); return;    
+        case IRExpr::EXK_CAST: DerivedThis->VisitCast(llvm::dyn_cast<CastIRExpr>(E)); return;    
         default: PANIC("impossible expr");
       }
     }
@@ -671,6 +686,9 @@ class IRExprVisitor {
     void VisitAccess(AccessIRExpr *Node) {}
     void VisitIndex(IndexIRExpr *Node) {
       Visit(Node->Ind.get());
+    }
+    void VisitCast(CastIRExpr *Node) {
+      Visit(Node->E.get());
     }
     void VisitDRef(DRefIRExpr *Node)  {
       Visit(Node->Expr.get());
@@ -826,7 +844,7 @@ public:
     switch (VR->DeclLoc) {
       case IRVarDecl::ARG: {
         if (Info.IsTask) {
-          Out << "largs->" << GetSym(VR->Name);
+          Out << "largs-\\>" << GetSym(VR->Name);
         } else {
           Out << GetSym(VR->Name);
         }
@@ -986,6 +1004,10 @@ public:
 
   void VisitAccess(AccessIRExpr *Node) {
     CB(Node->Struct, false);
+  }
+
+  void VisitIndex(IndexIRExpr *Node) {
+    CB(Node->Arr, false);
   }
 };
 /*

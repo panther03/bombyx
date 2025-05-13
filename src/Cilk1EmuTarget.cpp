@@ -255,10 +255,18 @@ private:
     const std::string &SpawnNextFnName = ES->SN->Fn->getName();
     Indent() << "cont sp" << SpawnCtr << "k;\n";
     // TODO make it work on non-local
-    assert(ES->Local);
-    auto *IdentDest = dyn_cast<IdentIRExpr>(ES->Dest.get());
+    if (ES->Local) {
+      auto *IdentDest = dyn_cast<IdentIRExpr>(ES->Dest.get());
+      assert(IdentDest);
+      Indent() << "SN_BIND(SN_" << SpawnNextFnName << ", &sp" << SpawnCtr << "k, " << GetSym(IdentDest->Ident->Name) << ");\n";
+    } else {
+      Indent() << "SN_BIND(SN_" << SpawnNextFnName << ", &sp" << SpawnCtr << "k, &(";
+      ES->Dest->print(Out, C);
+      Out << "));\n";
+    }
+    
 
-    Indent() << "SN_BIND(SN_" << SpawnNextFnName << ", &sp" << SpawnCtr << "k, " << GetSym(IdentDest->Ident->Name) << ");\n";
+    
     Indent() << SpawnFnName << "_closure sp" << SpawnCtr << "c(sp" << SpawnCtr << "k);\n";
 
     // we do not create spawn destination functions. 

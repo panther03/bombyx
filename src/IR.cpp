@@ -126,7 +126,7 @@ void LiteralIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx){
     LitS = std::regex_replace(LitS, re, "\\$1");
   }
   
-  Out << LitS;
+  Out << "LIT(" << LitS << ")";
 }
 
 IRExpr* LiteralIRExpr::clone() {
@@ -239,6 +239,18 @@ IRExpr* CallIRExpr::clone() {
   } else {
     return new CallIRExpr(std::get<ASTVarRef>(Fn), NewArgs);
   }
+}
+
+void CastIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx){
+  Out << "((";
+  CastType.print(Out, Ctx.ASTCtx.getPrintingPolicy());
+  Out << ") ";
+  E->print(Out, Ctx);
+  Out << ")";
+}
+
+IRExpr* CastIRExpr::clone() {
+  return new CastIRExpr(CastType, E->clone());
 }
 
 /////////////
@@ -490,10 +502,14 @@ void IRFunction::cleanVars() {
   std::set<IRVarRef> accessed;
 
   for (auto &B: *this) {
+    auto VisitF = [&](auto &VR, bool lhs){ 
+      accessed.insert(VR);
+    };
     for (auto &S: *B) {
-      ExprIdentifierVisitor _(S.get(), [&](auto &VR, bool lhs){ 
-        accessed.insert(VR);
-      });
+      ExprIdentifierVisitor _(S.get(), VisitF);
+    }
+    if (B->Term) {
+      ExprIdentifierVisitor _(B->Term, VisitF);
     }
   }
 

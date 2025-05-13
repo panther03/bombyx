@@ -15,15 +15,71 @@
 #include "clang/AST/StmtCilk.h"
 #include "llvm/Support/ErrorHandling.h"
 
+//////////////////////////////////
+// Scan AST for relevant tasks //
+////////////////////////////////
+using FunLookupTy = std::unordered_map<const clang::FunctionDecl*, IRFunction*>;
+
+class CilkAnalyzeVisitor : public clang::RecursiveASTVisitor<CilkAnalyzeVisitor> {
+  FunctionDecl* CurrF = nullptr;
+  bool SpawnCtx = true;
+public:
+  std::set<FunctionDecl*> Tasks;
+  std::set<FunctionDecl*> TaskCallers;
+  explicit CilkAnalyzeVisitor () {}
+
+  bool VisitFunctionDecl(FunctionDecl *Decl) {
+    CurrF = Decl;
+    return true;
+  }
+
+  void HandleSpawn(CallExpr *Expr) {
+    if (Expr->getDirectCallee()) {
+      Tasks.insert(Expr->getDirectCallee());
+      TaskCallers.insert(CurrF);
+    } else {
+      PANIC("cannot deduce destination of spawn");
+    }
+  }
+
+  bool VisitCallExpr(CallExpr *Expr) {
+    if (Tasks.find(Expr->getDirectCallee()) != Tasks.end()) {
+      HandleSpawn(Expr);
+    }
+    return true;
+  }
+
+  bool VisitCilkSpawnExpr(CilkSpawnExpr *Expr) {
+    if (auto *CExpr = dyn_cast<CallExpr>(Expr->getSpawnedExpr())) {
+      HandleSpawn(CExpr);
+    } else {
+      PANIC("unrecognized spawned expression, should be a function call");
+    }
+    return true;
+  }
+
+  bool VisitCilkSpawnStmt(CilkSpawnStmt *Stmt) {
+    PANIC("TODO cilk spawn statements");
+  }
+  
+};
+
+////////////////////////
+// Convert AST to IR //
+//////////////////////
+
 class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
   private:
     IRBasicBlock* CurrB;
     std::vector<IRExpr*> ExprStack;
 
     std::unordered_map<ASTVarRef, IRVarRef> &VarLookup;
+    std::set<FunctionDecl*> Tasks;
     IRFunction *F;
     bool ExprCtx = false;
     bool CallCtx = false;
+    bool SpawnCtx = false;
+    bool SyncNext = false;
 
     IRExpr* getExpr(Expr *E) {
       assert(E);
@@ -36,6 +92,14 @@ class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
       return IRE;
     }
 
+    void pushIRStmt(IRStmt *S) {
+      CurrB->pushStmtBack(S);
+      if (SyncNext) {
+        VisitCilkSyncStmt(nullptr);
+        SyncNext = false;
+      }
+    }
+
     void handleStmt(Stmt *S) {
       assert(S);
       Stmt2IRVisitor::Visit(S);
@@ -46,7 +110,7 @@ class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
         ExprStack.pop_back();
         auto *EW = new ExprWrapIRStmt(E);
         //assert(isa<CallIRExpr>(EW->Expr.get()));
-        CurrB->pushStmtBack((IRStmt*)EW);
+        pushIRStmt((IRStmt*)EW);
       }
     }
 
@@ -54,17 +118,17 @@ class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
       if (auto *DI = dyn_cast<IdentIRExpr>(Dest)) {
         auto *CS = new CopyIRStmt(DI->Ident, Src);
         delete DI;
-        CurrB->pushStmtBack((IRStmt*)CS);
+        pushIRStmt((IRStmt*)CS);
       } else if (auto *LDest = dyn_cast<IRLvalExpr>(Dest)) {
         auto *SS = new StoreIRStmt(LDest, Src);
-        CurrB->pushStmtBack((IRStmt*)SS);
+        pushIRStmt((IRStmt*)SS);
       } else {
         llvm_unreachable("Unsupported LHS of assign");
       }
     }
 
   public:
-    Stmt2IRVisitor(IRFunction *F, std::unordered_map<ASTVarRef, IRVarRef> &VarLookup) : F(F), VarLookup(VarLookup) {
+    Stmt2IRVisitor(IRFunction *F, std::unordered_map<ASTVarRef, IRVarRef> &VarLookup, std::set<FunctionDecl*> Tasks) : F(F), VarLookup(VarLookup), Tasks(Tasks) {
       CurrB = F->createBlock();
     }
 
@@ -113,7 +177,7 @@ class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
           if (auto *E = dyn_cast<Expr>(S)) {
             auto *IE = getExpr(E);
             auto *CopyS = new CopyIRStmt(VR, IE);
-            CurrB->pushStmtBack((IRStmt*) CopyS);
+            pushIRStmt((IRStmt*) CopyS);
           } else {
             llvm_unreachable("Unsupported: RHS of DeclStmt is not an Expr");
           }
@@ -228,7 +292,7 @@ class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
 
     void VisitDoWhileStmt(DoStmt *DS) {
       auto *DoAnnot = new ScopeAnnotIRStmt(ScopeAnnot::SA_DO);
-      CurrB->pushStmtBack((IRStmt*)DoAnnot);
+      pushIRStmt((IRStmt*)DoAnnot);
 
       auto *LoopB = F->createBlock();
       auto *JoinB = F->createBlock();
@@ -273,6 +337,11 @@ class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
     } 
 
     void VisitIntegerLiteral(IntegerLiteral *Node) {
+      auto *LE = new LiteralIRExpr(Node);
+      ExprStack.push_back((IRExpr*)LE);
+    }
+
+    void VisitFloatingLiteral(FloatingLiteral *Node) {
       auto *LE = new LiteralIRExpr(Node);
       ExprStack.push_back((IRExpr*)LE);
     }
@@ -405,11 +474,27 @@ class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
         llvm::errs() << "Unsupported: non function identifier used for call expression.";
         llvm_unreachable("Non function identifier used for call expression.");
       }
+
+      if (!SpawnCtx & Tasks.find(Node->getDirectCallee()) != Tasks.end()) {
+        auto *SpawnedE = ExprStack.back();
+        ExprStack.pop_back();
+        HandleCilkSpawn(SpawnedE);
+        SyncNext = true;
+      }
     }
 
-    void VisitCilkSpawnExpr(CilkSpawnExpr *Node) {
-      auto *SpawnE = getExpr(Node->getSpawnedExpr());
-      if (auto *CallE = dyn_cast<CallIRExpr>(SpawnE)) {
+    void VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *Node) {
+      ExprStack.push_back(new LiteralIRExpr(Node));
+    }
+
+    void VisitCStyleCastExpr(CStyleCastExpr *Node) {
+      auto *E = getExpr(Node->getSubExpr());
+      auto *CastE = new CastIRExpr(Node->getType(), E);
+      ExprStack.push_back(CastE);
+    }
+
+    void HandleCilkSpawn(IRExpr *SpawnedE) {
+      if (auto *CallE = dyn_cast<CallIRExpr>(SpawnedE)) {
         std::vector<IRExpr*> Args;
         for (auto &Arg : CallE->Args) {
           Args.push_back(Arg.get());
@@ -419,7 +504,16 @@ class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
         delete CallE;
         auto *SE = new ISpawnIRExpr(FR, Args);
         ExprStack.push_back((IRExpr*)SE);
+      } else {
+        PANIC("unsupported: cilk spawn on non call expression");
       }
+    }
+
+    void VisitCilkSpawnExpr(CilkSpawnExpr *Node) {
+      SpawnCtx = true;
+      auto *SpawnE = getExpr(Node->getSpawnedExpr());
+      SpawnCtx = false;
+      HandleCilkSpawn(SpawnE);
     }
 
     void VisitDeclRefExpr(DeclRefExpr *DRE) {
@@ -437,27 +531,32 @@ class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
         auto *FS = new FIdentIRExpr(FR);
         ExprStack.push_back((IRExpr*)FS);
       } else {
-        llvm::errs() << "Could not find variable: " << VR->getDeclName();
-        abort();
+        // TODO put a warning here instead 
+        // llvm::errs() << "Could not find variable: " << VR->getDeclName();
+        // abort();
+        ExprStack.push_back(new LiteralIRExpr(DRE));
       }
     }
 };
-
-using FunLookupTy = std::unordered_map<const clang::FunctionDecl*, IRFunction*>;
 
 class Cilk2IRVisitor : public clang::RecursiveASTVisitor<Cilk2IRVisitor> {
 private:
   clang::ASTContext *Context;
   IRProgram &P;
-  NullStmt &Sentinel;
+  std::set<FunctionDecl*> &Tasks;
+  std::set<FunctionDecl*> &TaskCallers;
 
 public:
   FunLookupTy FunLookup;
-  explicit Cilk2IRVisitor(clang::ASTContext *Context, IRProgram &P,
-                          NullStmt &Sentinel)
-      : Context(Context), P(P), Sentinel(Sentinel) {}
+  explicit Cilk2IRVisitor(clang::ASTContext *Context, IRProgram &P, std::set<FunctionDecl*> &Tasks, std::set<FunctionDecl*> &TaskCallers)
+      : Context(Context), P(P), Tasks(Tasks), TaskCallers(TaskCallers) {}
 
   bool VisitFunctionDecl(clang::FunctionDecl *Decl) { 
+    if (Tasks.find(Decl) == Tasks.end() &&
+      TaskCallers.find(Decl) == TaskCallers.end()) {
+      return true;
+    }
+
     if (Decl->getBody()) {
       IRFunction *F = P.createFunc(Decl->getName().str());
       F->Info.RootFun = Decl;
@@ -472,11 +571,13 @@ public:
         });
         VarLookup[Param] = &F->Vars.back();
       }
-      Stmt2IRVisitor sv(F, VarLookup);
+      Stmt2IRVisitor sv(F, VarLookup, Tasks);
       sv.Visit(Decl->getBody());
 
-      F->Exit = sv.getCurrBlock();
       FunLookup[Decl] = F;
+      F->Exit = sv.getCurrBlock();  
+    } else if (Tasks.find(Decl) != Tasks.end()) {
+      PANIC("unsupported: forward declaration of task function");
     }
     return true;
   }
@@ -515,10 +616,24 @@ void finalizeFunction(IRFunction *F, FunLookupTy &FunLookup) {
   }
 }
 
-void OpenCilk2IR(IRProgram &P, clang::ASTContext *Context, SourceManager &SM, NullStmt &Sentinel) {
-  Cilk2IRVisitor Visitor(Context, P, Sentinel);
+void OpenCilk2IR(IRProgram &P, clang::ASTContext *Context, SourceManager &SM) {
+  CilkAnalyzeVisitor AVisitor;
+  Cilk2IRVisitor Visitor(Context, P, AVisitor.Tasks, AVisitor.TaskCallers);
   // Only visit declarations declared in the input TU
   auto Decls = Context->getTranslationUnitDecl()->decls();
+  for (auto &Decl: Decls) {
+    if (!SM.isInMainFile(Decl->getLocation()))
+      continue;
+    AVisitor.TraverseDecl(Decl);
+  }
+  llvm::outs() << "tasks\n";
+  for (auto *Task : AVisitor.Tasks) {
+    llvm::outs() << Task->getName() << "\n";
+  }
+  llvm::outs() << "taskcallers\n";
+  for (auto *Task : AVisitor.TaskCallers) {
+    llvm::outs() << Task->getName() << "\n";
+  }
   for (auto &Decl : Decls) {
     // Ignore declarations out of the main translation unit.
     //
@@ -527,6 +642,7 @@ void OpenCilk2IR(IRProgram &P, clang::ASTContext *Context, SourceManager &SM, Nu
     // location instead if spelling location if required.
     if (!SM.isInMainFile(Decl->getLocation()))
       continue;
+    AVisitor.TraverseDecl(Decl);
     Visitor.TraverseDecl(Decl);
   }
 

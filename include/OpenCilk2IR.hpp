@@ -5,4 +5,4 @@
 
 #include "IR.hpp"
 
-void OpenCilk2IR(IRProgram &P, clang::ASTContext *Context, SourceManager &SM, NullStmt &Sentinel);
+void OpenCilk2IR(IRProgram &P, clang::ASTContext *Context, SourceManager &SM);

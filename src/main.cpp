@@ -38,7 +38,7 @@ public:
       .ASTCtx = Context,
       .NewlineSymbol = "\n"
     };
-    OpenCilk2IR(P, &Context, SM, Sentinel);
+    OpenCilk2IR(P, &Context, SM);
     {
       llvm::raw_fd_ostream DotFile("irbefore.dot", EC, llvm::sys::fs::OF_Text);
       if (EC) {

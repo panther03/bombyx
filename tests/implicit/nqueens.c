@@ -111,7 +111,6 @@ int main(int argc, char *argv[]) {
   if (argc < 2) {
     fprintf (stderr, "Usage: %s [<cilk-options>] <n>\n", argv[0]);
     fprintf (stderr, "Use default board size, n = 13.\n");
-
   } else {
     n = atoi (argv[1]);
     fprintf (stderr, "Running %s with n = %d.\n", argv[0], n);
