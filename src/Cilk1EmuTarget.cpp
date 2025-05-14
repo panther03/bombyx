@@ -242,8 +242,8 @@ private:
     for (auto &[SrcVar,DstVar] : S->Decl->Caller2Callee) {
       if (!SrcVar->IsEphemeral) {
         Indent() << "((" << SpawnNextFnName << "_closure*)SN_" << SpawnNextFnName;
-        Out << ".cls.get())->" << GetSym(SrcVar->Name) << " = ";
-        S->Fn->printVar(Out, DstVar);
+        Out << ".cls.get())->" << GetSym(DstVar->Name) << " = ";
+        S->Fn->printVar(Out, SrcVar);
         Out << ";\n";
       }
     }
@@ -260,7 +260,7 @@ private:
       assert(IdentDest);
       Indent() << "SN_BIND(SN_" << SpawnNextFnName << ", &sp" << SpawnCtr << "k, " << GetSym(IdentDest->Ident->Name) << ");\n";
     } else {
-      Indent() << "SN_BIND(SN_" << SpawnNextFnName << ", &sp" << SpawnCtr << "k, &(";
+      Indent() << "SN_BIND_EXT(SN_" << SpawnNextFnName << ", &sp" << SpawnCtr << "k, &(";
       ES->Dest->print(Out, C);
       Out << "));\n";
     }

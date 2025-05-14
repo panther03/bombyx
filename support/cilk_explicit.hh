@@ -92,7 +92,7 @@ template <class C> class spawn {
     }
 };
 
-#define SEND_ARGUMENT(k, n) {*((typeof(n)*)((k).ret)) = (n); ((k).cls)->jc--; return; }
+#define SEND_ARGUMENT(k, n) {if (k.ret) {*((typeof(n)*)((k).ret)) = (n);} if (k.cls) {((k).cls)->jc--;} return; }
 #define SN_BIND(sn, k, field) {assert(sn.cls); (k)->init(&sn,sn.cls.get()); (k)->ret = (void*)&(sn.cls->field);}
 #define SN_BIND_EXT(sn, k, ptr) {assert(sn.cls); (k)->init(&sn,sn.cls.get()); (k)->ret = (void*)ptr;}
 #define THREAD(fn_name) void fn_name (std::shared_ptr<closure> args)

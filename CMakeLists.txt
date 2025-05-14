@@ -3,8 +3,22 @@ cmake_minimum_required(VERSION 3.15)
 # Project name
 project(bombyx-cc)
 
-if(NOT OPENCILK_HOME)
-    set(OPENCILK_HOME "/opt/OpenCilk")
+# Platform-specific default install path
+set(DEFAULT_OPENCILK_HOME "/opt/OpenCilk") # Linux/macOS default
+
+set(REL_OPENCILK_HOME "${DEFAULT_OPENCILK_HOME}" CACHE PATH "OpenCilk installation root directory")
+
+# Convert to absolute path and verify
+get_filename_component(OPENCILK_HOME "${REL_OPENCILK_HOME}" ABSOLUTE)
+
+# Check if the directory exists (or can be created)
+if(NOT EXISTS "${OPENCILK_HOME}")
+    message(FATAL_ERROR 
+        "OPENCILK_HOME directory '${OPENCILK_HOME}' does not exist.\n"
+        "Please specify a valid path with -DOPENCILK_HOME=/path/to/opencilk."
+    )
+else()
+    message("-- Using OpenCilk installation at ${OPENCILK_HOME}")
 endif()
 
 # Set the CMake prefix path to include custom LLVM and Clang installation paths
@@ -61,3 +75,13 @@ target_link_libraries(bombyx-cc PRIVATE
     clangSerialization
     clangDriver
 )
+
+
+get_filename_component(CILK_INSTALL_INCLUDE_DIR "${OPENCILK_HOME}/include" ABSOLUTE)
+get_filename_component(CILK_INSTALL_BIN_DIR "${OPENCILK_HOME}/bin" ABSOLUTE)
+
+install(
+    TARGETS bombyx-cc
+    RUNTIME   
+)
+install(FILES support/cilk_explicit.hh DESTINATION include/)

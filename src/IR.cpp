@@ -36,7 +36,8 @@ Sym PutSym(std::string Name) {
 
 void IndexIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   assert(Ind);
-  Out << GetSym(Arr->Name) << "[";
+  Arr->Parent->printVar(Out, Arr);
+  Out << "[";
   Ind->print(Out, Ctx);
   Out << "]";
 }
@@ -75,7 +76,7 @@ IRExpr* DRefIRExpr::clone() {
 
 void AccessIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx){
   assert(Struct);
-  Out << GetSym(Struct->Name);
+  Struct->Parent->printVar(Out, Struct);
   if (Arrow) {
     Out << "->";
   } else {
@@ -345,7 +346,8 @@ IRStmt* StoreIRStmt::clone() {
 
 void CopyIRStmt::print(llvm::raw_ostream &Out, IRPrintContext &Ctx){
   assert(Dest);
-  Out << GetSym(Dest->Name) << " = ";
+  Dest->Parent->printVar(Out, Dest);
+  Out << " = ";
   Src->print(Out, Ctx);
 }
 

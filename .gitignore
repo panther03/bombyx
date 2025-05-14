@@ -1,3 +1,9 @@
-*.dot
-build/
-.cache/
+/*
+!/src
+!/support
+!/tests
+!/include
+!./CMakeLists.txt
+!./.gitignore
+!./.clang-format
+!./.vscode
