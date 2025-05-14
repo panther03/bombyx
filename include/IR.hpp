@@ -844,7 +844,7 @@ public:
     switch (VR->DeclLoc) {
       case IRVarDecl::ARG: {
         if (Info.IsTask) {
-          Out << "largs-\\>" << GetSym(VR->Name);
+          Out << "largs->" << GetSym(VR->Name);
         } else {
           Out << GetSym(VR->Name);
         }

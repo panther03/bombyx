@@ -117,16 +117,7 @@ IRExpr* FIdentIRExpr::clone() {
 
 void LiteralIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx){
   assert(Lit);
-  std::string LitS;
-  llvm::raw_string_ostream LitOS(LitS);
-
-  Lit->printPretty(LitOS, nullptr, Ctx.ASTCtx.getPrintingPolicy());
-  if (Ctx.GraphVizEscapeChars) {
-    std::regex re("(\")");
-    LitS = std::regex_replace(LitS, re, "\\$1");
-  }
-  
-  Out << "LIT(" << LitS << ")";
+  Lit->printPretty(Out, nullptr, Ctx.ASTCtx.getPrintingPolicy());
 }
 
 IRExpr* LiteralIRExpr::clone() {
@@ -139,13 +130,7 @@ void BinopIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx){
   Out << "(";
   Left->print(Out, Ctx);
   Out << " ";
-  if (Ctx.GraphVizEscapeChars && Op == BINOP_GT) {
-    Out << "\\>";
-  } else if (Ctx.GraphVizEscapeChars && Op == BINOP_LT) {
-    Out << "\\<";
-  } else {
-    printBinop(Out);
-  }
+  printBinop(Out);
   Out << " ";
   Right->print(Out, Ctx);
   Out << ")";
@@ -444,17 +429,29 @@ void IRBasicBlock::clone(IRBasicBlock *Dest) {
 void IRBasicBlock::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   int I = 1;
   int j = 0;
+
+  std::string OutS;
+  llvm::raw_string_ostream OutOS(OutS);
+
+  llvm::raw_ostream *OutT = Ctx.GraphVizEscapeChars ? &OutOS : &Out;
   for (auto &Stmt : Stmts) {
-    Out << "   " << I << ": ";
-    Stmt->print(Out, Ctx);
-    Out << Ctx.NewlineSymbol;
+    *OutT << "   " << I << ": ";
+    Stmt->print(*OutT, Ctx);
+    *OutT << Ctx.NewlineSymbol;
 
     I++;
   }
   if (Term) { 
-    Out << "   T: ";
-    Term->print(Out, Ctx);
-    Out << Ctx.NewlineSymbol;
+    *OutT << "   T: ";
+    Term->print(*OutT, Ctx);
+    *OutT << Ctx.NewlineSymbol;
+  }
+
+  if (Ctx.GraphVizEscapeChars) {
+    //|(\\[^l])
+    std::regex re("([\"<>]|\\\\n)");
+    OutS = std::regex_replace(OutS, re, "\\$1");
+    Out << OutS;
   }
 }
 
