@@ -626,14 +626,17 @@ void OpenCilk2IR(IRProgram &P, clang::ASTContext *Context, SourceManager &SM) {
       continue;
     AVisitor.TraverseDecl(Decl);
   }
-  llvm::outs() << "tasks\n";
-  for (auto *Task : AVisitor.Tasks) {
-    llvm::outs() << Task->getName() << "\n";
+  DBG {
+    llvm::outs() << "tasks\n";
+    for (auto *Task : AVisitor.Tasks) {
+      llvm::outs() << Task->getName() << "\n";
+    }
+    llvm::outs() << "taskcallers\n";
+    for (auto *Task : AVisitor.TaskCallers) {
+      llvm::outs() << Task->getName() << "\n";
+    }
   }
-  llvm::outs() << "taskcallers\n";
-  for (auto *Task : AVisitor.TaskCallers) {
-    llvm::outs() << Task->getName() << "\n";
-  }
+  
   for (auto &Decl : Decls) {
     // Ignore declarations out of the main translation unit.
     //

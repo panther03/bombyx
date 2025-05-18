@@ -89,13 +89,15 @@ private:
     }
 
     int i = 0;
-    for (auto &Path : Paths) {
-      llvm::outs() << "path " << i << ": ";
-      for (auto &B : Path) {
-        llvm::outs() << "BB" << B->getInd() << ", ";
+    INFO {
+      for (auto &Path : Paths) {
+        llvm::outs() << "path " << i << ": ";
+        for (auto &B : Path) {
+          llvm::outs() << "BB" << B->getInd() << ", ";
+        }
+        llvm::outs() << "\n";
+        i++;
       }
-      llvm::outs() << "\n";
-      i++;
     }
   }
 
@@ -155,12 +157,14 @@ private:
 
 public:
   CreateContinuationFuns(IRFunction &F) {
-    F.cleanVars();
-    outs() << "Root (init):\n";
-    F.printVars(outs());
+    INFO {
+      F.cleanVars();
+      outs() << "Root (init):\n";
+      F.printVars(outs());
+    }
     createSyncPaths(F);
 
-    if (Paths.size() == 1) {
+    if (Paths.size() <= 1) {
       // Not a function with syncs
       return;
     }
@@ -282,14 +286,16 @@ public:
 
     F.cleanVars();
 
-    outs() << "Root:\n";
-    F.printVars(outs());
-
-    int I = 0;
-    for (auto &CF : ContFuns) {
-      outs() << "ContF" << CF.F->getInd() << ":\n";
-      CF.F->printVars(outs());
-      I++;
+    INFO {
+      outs() << "Root:\n";
+      F.printVars(outs());
+  
+      int I = 0;
+      for (auto &CF : ContFuns) {
+        outs() << "ContF" << CF.F->getInd() << ":\n";
+        CF.F->printVars(outs());
+        I++;
+      } 
     }
   }
 };

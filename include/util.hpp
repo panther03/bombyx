@@ -5,6 +5,12 @@
 #include <stdio.h>
 #include <deque>
 
+extern int VERBOSITY;
+
+#define DBG if (VERBOSITY >= 2)
+#define INFO if (VERBOSITY >= 1)
+#define WARN
+
 #define BRED "\e[1;31m"
 #define BHGREEN "\e[1;92m"
 #define BHBLK "\e[1;90m"

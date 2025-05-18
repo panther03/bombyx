@@ -27,7 +27,15 @@ set(CMAKE_PREFIX_PATH "${OPENCILK_HOME}/lib/cmake")
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -g -fsanitize=address")
+# If we are building in DEBUG mode, add -g flag
+if(CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+    message(STATUS "Building in DEBUG mode")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+else()
+    message(STATUS "Building in RELEASE mode")
+endif()
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fsanitize=address")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DOPENCILK_HOME=\\\"${OPENCILK_HOME}\\\"")
 
 # Specify the custom LLVM and Clang installation path
 set(LLVM_DIR "${OPENCILK_HOME}/lib/cmake/llvm")
