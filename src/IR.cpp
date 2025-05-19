@@ -428,6 +428,25 @@ void IRBasicBlock::clone(IRBasicBlock *Dest) {
   }
 }
 
+IRBasicBlock* IRBasicBlock::splitAt(int Index) {
+  assert(Index >= 0 && Index < Stmts.size());
+  auto *RBlock = Parent->createBlock();
+  for (int i = Index; i < Stmts.size(); i++) {
+    RBlock->pushStmtBack(Stmts[i].release());
+  }
+  if (Term) {
+    RBlock->Term = Term;
+    Term = nullptr;
+  }
+  Stmts.resize(Index);
+  return RBlock;
+}
+
+IRStmt* IRBasicBlock::getAt(int Index) {
+  assert(Index >= 0 && Index < Stmts.size());
+  return Stmts[Index].get();
+}
+
 void IRBasicBlock::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   int I = 1;
   int j = 0;

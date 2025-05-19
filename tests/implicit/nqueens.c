@@ -69,6 +69,7 @@ int nqueens (int n, int j, char *a) {
     return 1;
   }
 
+  #pragma BOMBYX DAE
   count = (int *) alloca(n * sizeof(int));
   (void) memset(count, 0, n * sizeof (int));
 

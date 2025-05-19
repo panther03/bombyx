@@ -34,7 +34,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "DEBUG")
 else()
     message(STATUS "Building in RELEASE mode")
 endif()
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fsanitize=address")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fno-rtti -fsanitize=address")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DOPENCILK_HOME=\\\"${OPENCILK_HOME}\\\"")
 
 # Specify the custom LLVM and Clang installation path
@@ -63,6 +63,7 @@ include_directories("include")
 set(SOURCE_FILES
     src/main.cpp
     src/IR.cpp
+    src/DAE.cpp
     src/OpenCilk2IR.cpp
     src/MakeExplicit.cpp
     src/Cilk1EmuTarget.cpp

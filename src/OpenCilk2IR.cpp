@@ -13,6 +13,7 @@
 #include "clang/AST/OperationKinds.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCilk.h"
+#include "clang/Basic/SourceLocation.h"
 #include "llvm/Support/ErrorHandling.h"
 
 //////////////////////////////////
@@ -152,6 +153,15 @@ class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
     void VisitCompoundStmt(CompoundStmt *Node) {
       for (auto &child: Node->children()) {
         handleStmt(child);
+      }
+    }
+
+    void VisitLabelStmt(LabelStmt *Node) {
+      if (Node->getDecl()->getName() == "__bombyx_dae_here") {
+        pushIRStmt(new ScopeAnnotIRStmt(ScopeAnnot::SA_DAE_HERE));
+        handleStmt(Node->getSubStmt());
+      } else {
+        PANIC("unsupported: label statement")
       }
     }
 

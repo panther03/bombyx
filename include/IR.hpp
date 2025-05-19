@@ -24,7 +24,7 @@ class IRFunction;
 class IRProgram;
 class IRExpr;
 
-enum ScopeAnnot { SA_OPEN, SA_CLOSE, SA_DO, SA_ELSE };
+enum ScopeAnnot { SA_OPEN, SA_CLOSE, SA_DO, SA_ELSE, SA_DAE_HERE };
 
 struct IRPrintContext {
   clang::ASTContext &ASTCtx;
@@ -621,10 +621,9 @@ struct CopyIRStmt : IRStmt {
 };
 
 struct ScopeAnnotIRStmt : IRStmt {
-private:
-  ScopeAnnot SA;
 
 public:
+  ScopeAnnot SA;
   ScopeAnnotIRStmt(ScopeAnnot SA) : SA(SA), IRStmt(STK_SCOPE_ANNOT) {}
 
   static bool classof(const IRStmt *S) {
@@ -769,6 +768,9 @@ private:
   void pushStmtFront(IRStmt *stmt) { Stmts.push_front(IRStmtPtr(stmt)); }
   // Clones contents of basic block. Does not clone successors.
   void clone(IRBasicBlock *Dest);
+  IRBasicBlock* splitAt(int Index);
+
+  IRStmt* getAt(int Index);
 
   // void graphPrintStmt(llvm::raw_ostream &Out, clang::ASTContext &,
   //                     const Stmt *S, const char *NewlineSymbol);
@@ -989,6 +991,10 @@ public:
   
   ExprIdentifierVisitor(IRStmt *S, IdCallbackType CB) : CB(CB) {
     VisitStmt(S);
+  }
+
+  ExprIdentifierVisitor(IRExpr *E, IdCallbackType CB) : CB(CB) {
+    Visit(E);
   }
 
   void VisitStmt(IRStmt *S) {

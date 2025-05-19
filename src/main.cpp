@@ -14,7 +14,10 @@
 #include "IR.hpp"
 #include "MakeExplicit.hpp"
 #include "OpenCilk2IR.hpp"
+#include "DAE.hpp"
 #include "util.hpp"
+#include "clang/Basic/DiagnosticIDs.h"
+#include "clang/Basic/TokenKinds.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace clang;
@@ -28,14 +31,14 @@ struct ConvertOpts {
   std::set<int> DumpPasses;
 };
 
+ConvertOpts GOpts;
+
 class CilkConvert : public clang::ASTConsumer {
 private:
   clang::CompilerInstance &CI;
 
   IRProgram P;
   StringRef OutFilename;
-
-  ConvertOpts Opts;
 
 public:
   explicit CilkConvert(clang::CompilerInstance &CI, StringRef OutFilename)
@@ -54,6 +57,9 @@ public:
       [&](IRProgram& P) -> void {
         OpenCilk2IR(P, &Context, SM);
       },
+      [&](IRProgram &P) -> void {
+        DAE(P);
+      },
       [&](IRProgram& P) -> void {
         MakeExplicit(P);
       },
@@ -67,7 +73,7 @@ public:
 
     for (int i = 0; i < Passes.size(); i++) {
       Passes[i](P);
-      if (Opts.DumpPasses.find(i) != Opts.DumpPasses.end()) {
+      if (GOpts.DumpPasses.find(i) != GOpts.DumpPasses.end()) {
         std::string fname = "ir" + std::to_string(i) + ".dot";
         llvm::raw_fd_ostream DotFile(fname, EC, llvm::sys::fs::OF_Text);
         if (EC) {
@@ -79,6 +85,59 @@ public:
   }
 };
 
+class BombyxPragmaHandler : public clang::PragmaHandler {
+  public:
+    BombyxPragmaHandler() : PragmaHandler("BOMBYX") {}
+  
+      void HandlePragma(clang::Preprocessor &PP, 
+                       clang::PragmaIntroducer Introducer,
+                       clang::Token &FirstToken) override {          
+
+          clang::Token Tok;
+          PP.Lex(Tok);
+          // Check if we got an identifier (like "DAE")
+          if (Tok.is(clang::tok::identifier)) {
+              std::string Arg = PP.getSpelling(Tok);
+
+              if (Arg != "DAE") {
+                  PANIC("unknown bombyx pragma %s", Arg.c_str());
+              }
+          }
+          else {
+              PP.Diag(Tok.getLocation(), clang::diag::err_expected_after) 
+                  << "BOMBYX";
+          }
+
+          // Consume remaining tokens until end of directive
+          PP.Lex(Tok);
+          while (!Tok.is(clang::tok::eod)) {
+              PP.Lex(Tok);
+          }
+
+          // 1. Create the tokens
+          Token LabelTok;
+          LabelTok.startToken();
+          LabelTok.setKind(tok::identifier);
+          LabelTok.setIdentifierInfo(PP.getIdentifierInfo("__bombyx_dae_here"));
+
+          Token ColTok;
+          ColTok.startToken();
+          ColTok.setKind(tok::colon);
+
+          SmallVector<Token, 2> TokenList;
+          TokenList.push_back(LabelTok);
+          TokenList.push_back(ColTok);
+
+          for(Token& Tok : TokenList)
+            Tok.setLocation(FirstToken.getLocation());
+
+          ArrayRef TokenArray = TokenList;
+          PP.EnterTokenStream(TokenArray,          
+            /*DisableMacroExpansion=*/false,
+           /*IsReinject=*/false);
+      }
+  };
+
 // Frontened action to create the custom AST consumer
 class CilkConvertAction : public clang::ASTFrontendAction {
 public:
@@ -87,6 +146,9 @@ public:
   CreateASTConsumer(clang::CompilerInstance &CI, StringRef file) override {
     clang::Preprocessor &PP = CI.getPreprocessor();
     PP.enableIncrementalProcessing();
+
+    auto H = new BombyxPragmaHandler();
+    CI.getPreprocessor().AddPragmaHandler(H);
     if (!PP.getPreprocessingRecord()) {
       PP.createPreprocessingRecord();
     }
@@ -107,11 +169,9 @@ int main(int argc, char *argv[]) {
     {"fdump-dot", required_argument, 0, 0 },
   };
   int option_index = -1;
-  std::set<int> DumpPasses;
   while ((c = getopt_long(argc, argv, "vV", long_options, &option_index)) != -1) {
     switch (c) {
     case 0: 
-      PANIC("NO!");
       if (option_index == 0) {
         char* ps = optarg;
         char* p = optarg;
@@ -119,7 +179,7 @@ int main(int argc, char *argv[]) {
           char po = *p;
           if (*p == 0 || *p == ',') {
             *p = 0;
-            DumpPasses.insert(atoi(ps));
+            GOpts.DumpPasses.insert(atoi(ps));
             ps = p + 1;
           }
           *p = po;
@@ -144,7 +204,8 @@ int main(int argc, char *argv[]) {
   std::vector<std::string> compilationFlags = {
     OPENCILK_HOME "/bin/clang",
     "-c",
-    "-Wall",
+        "-Wall",
+    "-Wno-unused-label",
     "-fopencilk",
     "-fsyntax-only",
     };
