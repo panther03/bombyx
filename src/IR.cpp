@@ -534,7 +534,7 @@ void IRFunction::cleanVars() {
   auto it = Vars.begin();
   while (it != Vars.end()) {
     auto *VR = &(*it);
-    if (accessed.find(VR) == accessed.end()) {
+    if (accessed.find(VR) == accessed.end() && VR->DeclLoc != IRVarDecl::ARG) {
       // Remove variable declaration
       auto itc = it;
       it++;

@@ -1014,6 +1014,7 @@ public:
 
   void VisitIndex(IndexIRExpr *Node) {
     CB(Node->Arr, false);
+    Visit(Node->Ind.get());
   }
 };
 /*

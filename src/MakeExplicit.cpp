@@ -159,7 +159,7 @@ public:
   CreateContinuationFuns(IRFunction &F) {
     INFO {
       F.cleanVars();
-      outs() << "Root (init):\n";
+      outs() << F.getName() << " (init):\n";
       F.printVars(outs());
     }
     createSyncPaths(F);
@@ -287,7 +287,7 @@ public:
     F.cleanVars();
 
     INFO {
-      outs() << "Root:\n";
+      outs() << F.getName() << ":\n";
       F.printVars(outs());
   
       int I = 0;
@@ -416,8 +416,7 @@ struct FinalizeExplicitCPS {
         } else if (auto SS = dyn_cast<StoreIRStmt>(S.get())) {
           IS = dyn_cast<ISpawnIRExpr>(SS->Src.get());
           if (IS) {
-            Dest = SS->Dest.get();
-            SS->Dest.release();
+            Dest = SS->Dest.release();
             SS->Src.release();
           }
         }

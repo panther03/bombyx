@@ -621,7 +621,7 @@ void finalizeFunction(IRFunction *F, FunLookupTy &FunLookup) {
     }
     if (B->Term && isa<ReturnIRStmt>(B->Term) && (B.get() != F->Exit)) {
       B->Succs.clear();
-      B->Succs.insert(F->Exit);
+    //  B->Succs.insert(F->Exit);
     }
   }
 }
