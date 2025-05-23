@@ -26,12 +26,6 @@ class IRExpr;
 
 enum ScopeAnnot { SA_OPEN, SA_CLOSE, SA_DO, SA_ELSE, SA_DAE_HERE };
 
-struct IRPrintContext {
-  clang::ASTContext &ASTCtx;
-  const char *NewlineSymbol;
-  bool GraphVizEscapeChars = false;
-};
-
 typedef const clang::QualType IRType;
 typedef int Sym;
 
@@ -49,13 +43,21 @@ struct IRVarDecl {
   Sym Name;
   enum { LOCAL, ARG } DeclLoc;
   bool IsEphemeral = false; 
-  // TODO: stopgap solution: probably right thing would be to override the printing methods
-  // so that this would be included as context when an IdentIRexpr is encountered
-  IRFunction* Parent;
 };
 
 typedef std::variant<ASTVarRef, IRFunction *> IRFunRef;
 typedef IRVarDecl *IRVarRef;
+
+static void identPrintSimple(llvm::raw_ostream &Out, IRVarRef VR) {
+  Out << GetSym(VR->Name);
+}
+
+struct IRPrintContext {
+  clang::ASTContext &ASTCtx;
+  const char *NewlineSymbol;
+  bool GraphVizEscapeChars = false;
+  std::function<void(llvm::raw_ostream&, IRVarRef)> IdentCB = &identPrintSimple;
+};
 
 class IRExpr {
 public:
@@ -769,8 +771,8 @@ private:
   // Clones contents of basic block. Does not clone successors.
   void clone(IRBasicBlock *Dest);
   IRBasicBlock* splitAt(int Index);
-
   IRStmt* getAt(int Index);
+  void removeAt(int Index);
 
   // void graphPrintStmt(llvm::raw_ostream &Out, clang::ASTContext &,
   //                     const Stmt *S, const char *NewlineSymbol);
@@ -823,7 +825,6 @@ private:
 
 public:
   std::list<IRVarDecl> Vars;
-  IRBasicBlock *Exit = nullptr;
   IRFunctionInfo Info;
 
   friend class IRBasicBlock;
@@ -842,24 +843,6 @@ public:
     out << "\n";
   }
 
-  void printVar(llvm::raw_ostream &Out, IRVarRef VR) {
-    switch (VR->DeclLoc) {
-      case IRVarDecl::ARG: {
-        if (Info.IsTask) {
-          Out << "largs->" << GetSym(VR->Name);
-        } else {
-          Out << GetSym(VR->Name);
-        }
-        break;
-      }
-      case IRVarDecl::LOCAL: {
-        Out << GetSym(VR->Name);
-        break;
-      }
-      default: PANIC("unsupported");
-    }
-  }
-
   void print(llvm::raw_ostream &out, clang::ASTContext &Context);
   void dumpGraph(llvm::raw_ostream &out, clang::ASTContext &Context);
   // void dumpArgs(llvm::raw_ostream &out);
@@ -875,7 +858,6 @@ public:
   IRBlockPtr &back() { return Blocks.back(); }
   // Front of the function should always be the entry block.
   IRBasicBlock *getEntry() { return Blocks.front().get(); }
-  IRBasicBlock *getExit() { return Exit; }
 
   iterator begin() { return Blocks.begin(); }
   iterator end() { return Blocks.end(); }

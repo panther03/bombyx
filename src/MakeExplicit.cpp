@@ -237,7 +237,6 @@ public:
             .Type = Arg->Type,
             .Name = Arg->Name,
             .DeclLoc = IRVarDecl::ARG,
-            .Parent = CF.F
           });
           Remap[Arg] = &(CF.F->Vars.back());
         }
@@ -246,7 +245,6 @@ public:
             .Type = Local->Type,
             .Name = Local->Name,
             .DeclLoc = IRVarDecl::LOCAL,
-            .Parent = CF.F
           });
           Remap[Local] = &(CF.F->Vars.back());
         }

@@ -36,7 +36,7 @@ Sym PutSym(std::string Name) {
 
 void IndexIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   assert(Ind);
-  Arr->Parent->printVar(Out, Arr);
+  Ctx.IdentCB(Out, Arr);
   Out << "[";
   Ind->print(Out, Ctx);
   Out << "]";
@@ -76,7 +76,7 @@ IRExpr* DRefIRExpr::clone() {
 
 void AccessIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx){
   assert(Struct);
-  Struct->Parent->printVar(Out, Struct);
+  Ctx.IdentCB(Out, Struct);
   if (Arrow) {
     Out << "->";
   } else {
@@ -92,7 +92,7 @@ IRExpr* AccessIRExpr::clone() {
 
 void IdentIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx){
   assert(Ident);
-  Ident->Parent->printVar(Out, Ident);
+  Ctx.IdentCB(Out, Ident);
 }
 
 IRExpr* IdentIRExpr::clone() {
@@ -346,7 +346,7 @@ IRStmt* StoreIRStmt::clone() {
 
 void CopyIRStmt::print(llvm::raw_ostream &Out, IRPrintContext &Ctx){
   assert(Dest);
-  Dest->Parent->printVar(Out, Dest);
+  Ctx.IdentCB(Out, Dest);
   Out << " = ";
   Src->print(Out, Ctx);
 }
@@ -445,6 +445,12 @@ IRBasicBlock* IRBasicBlock::splitAt(int Index) {
 IRStmt* IRBasicBlock::getAt(int Index) {
   assert(Index >= 0 && Index < Stmts.size());
   return Stmts[Index].get();
+}
+
+void IRBasicBlock::removeAt(int Index) {
+  assert(Index >= 0 && Index < Stmts.size());
+  auto it = begin() + Index;
+  Stmts.erase(it);
 }
 
 void IRBasicBlock::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
@@ -578,9 +584,9 @@ void IRFunction::dumpGraph(llvm::raw_ostream &out, clang::ASTContext &Context) {
     out << " [shape=record,";
     if (BB->Ind == 0) {
       out << "fontcolor=\"blue\",color=\"blue\",";
-    } else if (BB == BB->Parent->Exit) {
+    }/* else if (BB == BB->Parent->Exit) {
       out << "fontcolor=\"green\",color=\"green\",";
-    }
+    }*/
     out << "label=";
     BB->dumpGraph(out, Context);
     out << " ];\n";

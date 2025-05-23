@@ -174,7 +174,6 @@ class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
             .Type = VD->getType(),
             .Name = VDS,
             .DeclLoc = IRVarDecl::LOCAL,
-            .Parent = F
           });
           VR = &F->Vars.back();
           VarLookup[VD] = VR;
@@ -577,7 +576,6 @@ public:
           .Type = Param->getType(),
           .Name = PSym,
           .DeclLoc = IRVarDecl::ARG,
-          .Parent = F
         });
         VarLookup[Param] = &F->Vars.back();
       }
@@ -585,7 +583,6 @@ public:
       sv.Visit(Decl->getBody());
 
       FunLookup[Decl] = F;
-      F->Exit = sv.getCurrBlock();  
     } else if (Tasks.find(Decl) != Tasks.end()) {
       PANIC("unsupported: forward declaration of task function");
     }
@@ -619,7 +616,7 @@ void finalizeFunction(IRFunction *F, FunLookupTy &FunLookup) {
     for (auto &S : *B.get()) {
       FV.VisitStmt(S.get());
     }
-    if (B->Term && isa<ReturnIRStmt>(B->Term) && (B.get() != F->Exit)) {
+    if (B->Term && isa<ReturnIRStmt>(B->Term)) {
       B->Succs.clear();
     //  B->Succs.insert(F->Exit);
     }

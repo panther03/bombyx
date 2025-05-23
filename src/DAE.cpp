@@ -3,8 +3,9 @@
 
 void DAEAtInd(IRProgram &P, IRBasicBlock *B, int Ind) {
     static int DaeCount = 0;
-    assert(Ind > 0);
+    assert(Ind > 1);
     auto *RB = B->splitAt(Ind);
+    B->removeAt(Ind-2);
     B->Term = new SyncIRStmt();
 
     for (auto *S: B->Succs) {
@@ -16,7 +17,7 @@ void DAEAtInd(IRProgram &P, IRBasicBlock *B, int Ind) {
     IRFunction *LoadF = P.createFunc(B->getParent()->getName() + "_dae_" + std::to_string(DaeCount++));
     LoadF->Info.IsTask = true;
     
-    auto *AccessStmt = dyn_cast<CopyIRStmt>(B->getAt(Ind-1));
+    auto *AccessStmt = dyn_cast<CopyIRStmt>(B->getAt(Ind-2));
     if (!AccessStmt) {
         PANIC("DAE annotation should be proceeded by a copy IR statement (decouplable access)");
     }
@@ -27,7 +28,6 @@ void DAEAtInd(IRProgram &P, IRBasicBlock *B, int Ind) {
     ExprIdentifierVisitor _ (AccessStmt->Src.get(), [&](auto &VR, bool lhs) {
         if (Remap.find(VR) == Remap.end()) {
             IRVarDecl NewDecl = *VR;
-            NewDecl.Parent = LoadF;
             NewDecl.DeclLoc = IRVarDecl::ARG;
             LoadF->Vars.push_back(NewDecl);
             Remap[VR] = &LoadF->Vars.back();
@@ -56,10 +56,15 @@ void DAE(IRProgram &P) {
 
         for (auto &B: *F) {
             int i = 0;
+            bool dae_already = false;
             for (auto &S: *B) {
                 if (auto *SAS = dyn_cast<ScopeAnnotIRStmt>(S.get())) {
                     if (SAS->SA == ScopeAnnot::SA_DAE_HERE) {
+                        if (dae_already) {
+                            PANIC("unsupported: 2 DAE in the same basic block");
+                        }
                         SplitWorkList.push_back(std::make_pair(B.get(), i+2));
+                        dae_already = true;
                     }
                 }
                 i++;

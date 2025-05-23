@@ -243,7 +243,7 @@ private:
       if (!SrcVar->IsEphemeral) {
         Indent() << "((" << SpawnNextFnName << "_closure*)SN_" << SpawnNextFnName;
         Out << ".cls.get())->" << GetSym(DstVar->Name) << " = ";
-        S->Fn->printVar(Out, SrcVar);
+        C.IdentCB(Out, SrcVar);
         Out << ";\n";
       }
     }
@@ -363,7 +363,24 @@ void PrintCilk1Emu(IRProgram &P, llvm::raw_ostream &out, clang::ASTContext &C,
     auto IRC = IRPrintContext {
       .ASTCtx = C,
       .NewlineSymbol = "\n",
-      .GraphVizEscapeChars = false
+      .GraphVizEscapeChars = false,
+      .IdentCB = [&] (llvm::raw_ostream &Out, IRVarRef VR) {
+        switch (VR->DeclLoc) {
+          case IRVarDecl::ARG: {
+            if (F->Info.IsTask) {
+              Out << "largs->" << GetSym(VR->Name);
+            } else {
+              Out << GetSym(VR->Name);
+            }
+            break;
+          }
+          case IRVarDecl::LOCAL: {
+            Out << GetSym(VR->Name);
+            break;
+          }
+          default: PANIC("unsupported");
+        }
+      }
     };
     Cilk1EmuPrinter Printer(out, IRC);
     Printer.traverse(*F);
