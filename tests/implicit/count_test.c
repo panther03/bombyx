@@ -4,12 +4,12 @@
 
 int nonsense(int n) {
     int *y = (int*)malloc(sizeof(int) * n);
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n; i += 1) {
         y[i] = cilk_spawn nonsense(i);
     }
     cilk_sync;
     int sum = 0;
-    for (int j = 0; j < n; j++) {
+    for (int j = 0; j < n; j += 1) {
         sum += y[j];
     }
     free(y);

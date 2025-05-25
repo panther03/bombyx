@@ -1,5 +1,6 @@
 #include "CountSpawns.hpp"
 #include "IR.hpp"
+#include <string>
 #include <unordered_map>
 
 class SymbolicCount {
@@ -36,6 +37,30 @@ public:
     }
 };
 
+class SymbolicCountPrintWrap {
+    SymbolicCount &SC;
+    IRPrintContext &C;
+public:
+    SymbolicCountPrintWrap(SymbolicCount &SC, IRPrintContext &C) : SC(SC), C(C) {}
+    // implement operator<< to print the symbolic count
+    friend llvm::raw_ostream& operator<<(llvm::raw_ostream &Out, const SymbolicCountPrintWrap &SCW) {
+        auto &SC = SCW.SC;
+        Out << "SymbolicCount(N=" << SC.N << ", S=[";
+        for (const auto &fe : SC.S) {
+            auto SWrap = SymbolicCountPrintWrap(*(fe.second), SCW.C);
+            Out << "( ";
+            fe.first->print(Out, SCW.C);
+            Out << " | " << SWrap << "), ";
+        }
+        Out << "])";
+        return Out;
+    }
+};
+
+SymbolicCountPrintWrap wrap(SymbolicCount &SC, IRPrintContext &C) {
+    return SymbolicCountPrintWrap(SC, C);
+}
+
 bool operator==(const SymbolicCount& L, const SymbolicCount& R) {
     if (L.N < 0 || L.N != R.N || L.S.size() != R.S.size()) return false;
     bool eq = true;
@@ -53,18 +78,75 @@ bool operator==(const SymbolicCount& L, const SymbolicCount& R) {
     return eq;
 }
 
+// nightmarish hack storing an integer in the pointer as a symbolic variable
+// a normal IRVarRef shouldn't be misaligned so we keep the LSB as 1 for sanity check
+#define SYMVAR_TO_VARREF(SymV) ((IRVarDecl*)((SymV << 1) + 1))
+#define VARREF_NOT_SYMBOLIC(VR) (((size_t)VR & 1) == 0)
+#define VARREF_TO_SYMVAR(VR) (((size_t)VR) >> 1)
+
+
 class SpawnCounter {
 public:
     std::unordered_map<IRStmt*, SymbolicCount*> ClsCntLookup;
 private:
-    std::vector<IRExpr> GlobalEnv;
+    std::vector<IRExpr*> GlobalEnv;
     std::unordered_map<IRBasicBlock*, int> JoinCount;
     SymbolicCount *InvalidCount;
-    using EnvTy = std::unordered_map<IRVarRef, int>;
+    using EnvTy = std::unordered_map<IRVarRef, size_t>;
 
     IRExpr* extractLoopCount(LoopIRStmt *LS, EnvTy &PreEnv, EnvTy &PostEnv) {
+        if (auto CondE = dyn_cast<BinopIRExpr>(LS->Cond.get())) {
+            int IterOfs = 0;
+            IRExpr* IterSel = nullptr;
+            // TODO: doesnt handle a negative loop increment
+            switch (CondE->Op) {
+                case BinopIRExpr::BINOP_GE: { IterOfs = 1; };
+                case BinopIRExpr::BINOP_GT: { IterSel = CondE->Right.get(); break; }
+                case BinopIRExpr::BINOP_LE: { IterOfs = 1; }
+                case BinopIRExpr::BINOP_LT: { IterSel = CondE->Left.get(); break; }
+                default: {}
+            }
+            if (!IterSel) return nullptr;
+            IdentIRExpr* IterVar = dyn_cast<IdentIRExpr>(IterSel);
+            if (!IterVar) return nullptr;
+            
+            auto *IVarPostLoop = GlobalEnv[PostEnv[IterVar->Ident]];
+            auto IncS = dyn_cast<BinopIRExpr>(IVarPostLoop);
+            if (!IncS || IncS->Op != BinopIRExpr::BINOP_ADD) return nullptr;
+            
+            auto IncL = dyn_cast<IdentIRExpr>(IncS->Left.get());
+            if (!IncL) return nullptr;
+
+            if (VARREF_TO_SYMVAR(IncL->Ident) != PreEnv[IterVar->Ident]) return nullptr;
+
+            // TODO: add something for when the initialization is not 0
+            auto *IncE = IncS->Right.get()->clone();
+            auto *IterOpp = ((IterSel == CondE->Left.get()) ? CondE->Right.get() : CondE->Left.get())->clone();
+            return new BinopIRExpr(BinopIRExpr::BINOP_DIV, IterOpp, IncE);
+        }
         return nullptr;
     }
+
+    void addToEnv(EnvTy &Env, IRVarRef Dest, IRExpr *Src) {
+        // TODO: this analysis is unsound when the variable is aliased to something else
+        // you could have code like 
+        // int i = 0; (v0)
+        // i += 1     (v1)
+        // y = &i;    
+        // *y = -1;   (i |-> v1)
+        // <- here the environment would say that i -> v1 = v0 + 1, when in fact i = -1
+        auto *SrcC = Src->clone();
+        ExprIdentifierVisitor _(SrcC, [&](IRVarRef &VR, bool Dest) {
+            assert(!Dest);
+            assert(VARREF_NOT_SYMBOLIC(VR));
+
+            if (Env.find(VR) != Env.end()) {
+                VR = SYMVAR_TO_VARREF(Env[VR]);
+            }
+        });
+        Env[Dest] = GlobalEnv.size();
+        GlobalEnv.push_back(SrcC);
+    }   
 
     void countSpawns(
         EnvTy &Env,
@@ -83,6 +165,8 @@ private:
                 CDestL = new SymbolicCount(0);
                 assert(ClsCntLookup.find(CDS) == ClsCntLookup.end());
                 ClsCntLookup[CDS] = CDestL;
+            } else if (auto *CS = dyn_cast<CopyIRStmt>(S.get())) {
+                addToEnv(Env, CS->Dest, CS->Src.get());
             }
         }
         bool special = false;
@@ -174,7 +258,11 @@ public:
 
 
 
-void CountSpawns(IRProgram &P) {
+void CountSpawns(IRProgram &P, ASTContext &C) {
+    auto IC = IRPrintContext {
+        .ASTCtx = C,
+        .NewlineSymbol = "\n"
+    };
     for (auto &F: P) {
         SpawnCounter SC;
         SC.countSpawns(F->getEntry());
@@ -182,7 +270,7 @@ void CountSpawns(IRProgram &P) {
             if (!S) continue;
             auto *CDS = dyn_cast<ClosureDeclIRStmt>(S);
             assert(CDS);
-            llvm::outs() << CDS->Fn->getName() << " -> " << Cnt->N << "\n";
+            llvm::outs() << CDS->Fn->getName() << " -> " << wrap(*Cnt, IC) << "\n";
         }
     }
 }

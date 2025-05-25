@@ -59,6 +59,7 @@ struct IRPrintContext {
   std::function<void(llvm::raw_ostream&, IRVarRef)> IdentCB = &identPrintSimple;
 };
 
+
 class IRExpr {
 public:
   enum IRExprKind {
@@ -155,7 +156,7 @@ public:
   virtual IRExpr* clone() override;
 };
 
-struct SymVarIRExpr : IRExpr {
+/*struct SymVarIRExpr : IRExpr {
   int SymVar;
 public:
   SymVarIRExpr(int SymVar) : SymVar(SymVar), IRExpr(EXK_SYM_VAR) {}
@@ -166,7 +167,7 @@ public:
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
   virtual IRExpr* clone() override;
-};
+};*/
 
 struct AccessIRExpr : IRLvalExpr {
   IRVarRef Struct;

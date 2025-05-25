@@ -66,7 +66,7 @@ public:
         MakeExplicit(P);
       },
       [&](IRProgram& P) -> void {
-        CountSpawns(P);
+        CountSpawns(P, Context);
       },
       [&](IRProgram &P) -> void {
         llvm::raw_fd_ostream Cilk1Out(OutFilename, EC, llvm::sys::fs::OF_Text);

@@ -435,10 +435,10 @@ class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
         case clang::UO_LNot: Op = UnopIRExpr::UNOP_L_NOT; break;
         case clang::UO_Not: Op = UnopIRExpr::UNOP_NOT; break;
         case clang::UO_Minus: Op = UnopIRExpr::UNOP_NEG; break;
-        case clang::UO_PreDec: Op = UnopIRExpr::UNOP_PREDEC; break;
-        case clang::UO_PostDec: Op = UnopIRExpr::UNOP_POSTDEC; break;
-        case clang::UO_PreInc: Op = UnopIRExpr::UNOP_PREINC; break;
-        case clang::UO_PostInc: Op = UnopIRExpr::UNOP_POSTINC; break;
+        case clang::UO_PreDec: // Op =  UnopIRExpr::UNOP_PREDEC; break;
+        case clang::UO_PostDec: // Op =  UnopIRExpr::UNOP_POSTDEC; break;
+        case clang::UO_PreInc: // Op =  UnopIRExpr::UNOP_PREINC; break;
+        case clang::UO_PostInc: PANIC("TODO: need to make increment/decrement lower to a statement"); break; // Op = UnopIRExpr::UNOP_POSTINC; break;
         default: {
           llvm::errs() << "Unknown unary operator: " << Node->getOpcodeStr(Node->getOpcode()) << "\n";
           llvm_unreachable("Unknown unary operator");
