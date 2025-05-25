@@ -75,7 +75,8 @@ public:
     EXK_LVAL_DREF,
     EXK_LVAL_LAST,
     EXK_CAST,
-    EXK_CALL
+    EXK_CALL,
+    EXK_SYM_VAR
   };
 
 private:
@@ -148,6 +149,19 @@ public:
 
   static bool classof(const IRExpr *E) {
     return E->getKind() == EXK_LVAL_IDENT;
+  }
+
+  virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
+  virtual IRExpr* clone() override;
+};
+
+struct SymVarIRExpr : IRExpr {
+  int SymVar;
+public:
+  SymVarIRExpr(int SymVar) : SymVar(SymVar), IRExpr(EXK_SYM_VAR) {}
+
+  static bool classof(const IRExpr *E) {
+    return E->getKind() == EXK_SYM_VAR;
   }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
@@ -897,7 +911,7 @@ public:
   const_iterator end() const { return Funcs.end(); }
 };
 
-
+IRBasicBlock* FindJoin(IRBasicBlock* Left, IRBasicBlock *Right);
 class ScopedIRTraverser {
 protected:
   enum ScopeEvent { None, Open, Close, Else };

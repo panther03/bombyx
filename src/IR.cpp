@@ -100,6 +100,14 @@ IRExpr* IdentIRExpr::clone() {
   return new IdentIRExpr(Ident);
 }
 
+void SymVarIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx){
+  Out << "sv" << SymVar;
+}
+
+IRExpr* SymVarIRExpr::clone() {
+  return new SymVarIRExpr(SymVar);
+}
+
 void FIdentIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx){
   if (auto *F = std::get_if<IRFunction *>(&FR)) {
     Out << (*F)->getName();
@@ -731,7 +739,7 @@ void ScopedIRTraverser::traverse(IRFunction &F) {
   
       if (JC != 0) {
         continue;
-      } 
+      }
 
       visitBlock(B);
 

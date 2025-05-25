@@ -9,16 +9,18 @@
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Tooling/Tooling.h>
 #include <iostream>
-
-#include "Cilk1EmuTarget.hpp"
-#include "IR.hpp"
-#include "MakeExplicit.hpp"
-#include "OpenCilk2IR.hpp"
-#include "DAE.hpp"
-#include "util.hpp"
 #include "clang/Basic/DiagnosticIDs.h"
 #include "clang/Basic/TokenKinds.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include "util.hpp"
+#include "IR.hpp"
+#include "Cilk1EmuTarget.hpp"
+#include "MakeExplicit.hpp"
+#include "OpenCilk2IR.hpp"
+#include "DAE.hpp"
+#include "CountSpawns.hpp"
+
 
 using namespace clang;
 using namespace clang::tooling;
@@ -63,6 +65,9 @@ public:
       [&](IRProgram& P) -> void {
         MakeExplicit(P);
       },
+      [&](IRProgram& P) -> void {
+        CountSpawns(P);
+      },
       [&](IRProgram &P) -> void {
         llvm::raw_fd_ostream Cilk1Out(OutFilename, EC, llvm::sys::fs::OF_Text);
         PrintCilk1Emu(P, Cilk1Out, Context, CI);
@@ -80,6 +85,7 @@ public:
           PANIC("could not open file %s", fname.c_str());
         }
         P.dumpGraph(DotFile, Context);
+        DotFile.close();
       }
     }
   }

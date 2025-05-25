@@ -64,6 +64,7 @@ set(SOURCE_FILES
     src/main.cpp
     src/IR.cpp
     src/DAE.cpp
+    src/CountSpawns.cpp
     src/OpenCilk2IR.cpp
     src/MakeExplicit.cpp
     src/Cilk1EmuTarget.cpp
