@@ -346,17 +346,17 @@ class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
     } 
 
     void VisitIntegerLiteral(IntegerLiteral *Node) {
-      auto *LE = new LiteralIRExpr(Node);
+      auto *LE = new ASTLiteralIRExpr(Node);
       ExprStack.push_back((IRExpr*)LE);
     }
 
     void VisitFloatingLiteral(FloatingLiteral *Node) {
-      auto *LE = new LiteralIRExpr(Node);
+      auto *LE = new ASTLiteralIRExpr(Node);
       ExprStack.push_back((IRExpr*)LE);
     }
 
     void VisitStringLiteral(StringLiteral *Node) {
-      auto *LE = new LiteralIRExpr(Node);
+      auto *LE = new ASTLiteralIRExpr(Node);
       ExprStack.push_back((IRExpr*)LE);
     }
 
@@ -493,7 +493,7 @@ class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
     }
 
     void VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *Node) {
-      ExprStack.push_back(new LiteralIRExpr(Node));
+      ExprStack.push_back(new ASTLiteralIRExpr(Node));
     }
 
     void VisitCStyleCastExpr(CStyleCastExpr *Node) {
@@ -543,7 +543,7 @@ class Stmt2IRVisitor : public clang::StmtVisitor<Stmt2IRVisitor> {
         // TODO put a warning here instead 
         // llvm::errs() << "Could not find variable: " << VR->getDeclName();
         // abort();
-        ExprStack.push_back(new LiteralIRExpr(DRE));
+        ExprStack.push_back(new ASTLiteralIRExpr(DRE));
       }
     }
 };

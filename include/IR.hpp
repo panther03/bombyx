@@ -67,6 +67,7 @@ public:
     EXK_UNOP,
     EXK_REF,
     EXK_LITERAL,
+    EXK_INT_LITERAL,
     EXK_FIDENT,
     EXK_ISPAWN,
     EXK_LVAL_FIRST,
@@ -99,6 +100,9 @@ public:
   }
 
   virtual ~IRExpr() = default;
+  virtual bool operator==(const IRExpr &Other) const {
+    return false;
+  }
 };
 
 struct IRLvalExpr : public IRExpr {
@@ -344,17 +348,33 @@ public:
   virtual IRExpr* clone() override;
 };
 
-struct LiteralIRExpr : IRExpr {
+struct ASTLiteralIRExpr : IRExpr {
 private:
   clang::Expr *Lit;
 
 public:
-  LiteralIRExpr(clang::Expr *Lit) : Lit(Lit), IRExpr(EXK_LITERAL) {}
+  ASTLiteralIRExpr(clang::Expr *Lit) : Lit(Lit), IRExpr(EXK_LITERAL) {}
 
   static bool classof(const IRExpr *E) { return E->getKind() == EXK_LITERAL; }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
   virtual IRExpr* clone() override;
+};
+
+struct IntLiteralIRExpr : IRExpr {
+public:
+  int Lit;
+
+  IntLiteralIRExpr(int Lit) : Lit(Lit), IRExpr(EXK_INT_LITERAL) {}
+
+  static bool classof(const IRExpr *E) { return E->getKind() == EXK_INT_LITERAL; }
+
+  virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override {
+    Out << Lit;
+  }
+  virtual IRExpr* clone() override {
+    return new IntLiteralIRExpr(Lit);
+  }
 };
 
 struct CastIRExpr : IRExpr {
@@ -463,6 +483,7 @@ public:
 
 struct ClosureDeclIRStmt : IRStmt {
   IRFunction *Fn;
+  std::unique_ptr<IRExpr> SpawnCount;
   std::unordered_map<IRVarRef, IRVarRef> Caller2Callee;
 public:
   ClosureDeclIRStmt(IRFunction *Fn) : Fn(Fn), IRStmt(STK_CLOSURE_DECL) {}
@@ -473,6 +494,10 @@ public:
 
   void addCallerToCaleeVarMapping(IRVarRef VR1, IRVarRef VR2) {
     Caller2Callee[VR1] = VR2;
+  }
+
+  void annotateSpawnCount(IRExpr *E) {
+    SpawnCount = std::unique_ptr<IRExpr>(E);
   }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
@@ -667,7 +692,8 @@ class IRExprVisitor {
         case IRExpr::EXK_ISPAWN: DerivedThis->VisitISpawn(llvm::dyn_cast<ISpawnIRExpr>(E)); return;
         case IRExpr::EXK_FIDENT: DerivedThis->VisitFIdent(llvm::dyn_cast<FIdentIRExpr>(E)); return;
         case IRExpr::EXK_REF: DerivedThis->VisitRef(llvm::dyn_cast<RefIRExpr>(E)); return;
-        case IRExpr::EXK_LITERAL: DerivedThis->VisitLiteral(llvm::dyn_cast<LiteralIRExpr>(E)); return;
+        case IRExpr::EXK_LITERAL: DerivedThis->VisitLiteral(llvm::dyn_cast<ASTLiteralIRExpr>(E)); return;
+        case IRExpr::EXK_INT_LITERAL: DerivedThis->VisitIntLiteral(llvm::dyn_cast<IntLiteralIRExpr>(E)); return;
         case IRExpr::EXK_LVAL_IDENT: DerivedThis->VisitIdent(llvm::dyn_cast<IdentIRExpr>(E)); return;
         case IRExpr::EXK_LVAL_ACCESS: DerivedThis->VisitAccess(llvm::dyn_cast<AccessIRExpr>(E)); return;
         case IRExpr::EXK_LVAL_DREF: DerivedThis->VisitDRef(llvm::dyn_cast<DRefIRExpr>(E)); return;
@@ -686,7 +712,8 @@ class IRExprVisitor {
     void VisitRef(RefIRExpr *Node) {
       Visit(Node->E.get());
     }
-    void VisitLiteral(LiteralIRExpr *Node) {}
+    void VisitLiteral(ASTLiteralIRExpr *Node) {}
+    void VisitIntLiteral(IntLiteralIRExpr *Node) {}
     void VisitFIdent(FIdentIRExpr *Node) {}
     void VisitISpawn(ISpawnIRExpr *Node) {
       for (auto &Arg : Node->Args) {

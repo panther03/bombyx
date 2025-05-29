@@ -124,14 +124,14 @@ IRExpr* FIdentIRExpr::clone() {
   }
 }
 
-void LiteralIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx){
+void ASTLiteralIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx){
   assert(Lit);
   Lit->printPretty(Out, nullptr, Ctx.ASTCtx.getPrintingPolicy());
 }
 
-IRExpr* LiteralIRExpr::clone() {
+IRExpr* ASTLiteralIRExpr::clone() {
   assert(Lit);
-  return new LiteralIRExpr(Lit);
+  return new ASTLiteralIRExpr(Lit);
 }
 
 void BinopIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx){
@@ -381,6 +381,10 @@ void ClosureDeclIRStmt::print(llvm::raw_ostream &Out, IRPrintContext &Ctx){
     Out << " " << GetSym(src->Name);
   }
   Out << " )";
+  if (SpawnCount) {
+    Out << " // SC <- ";
+    SpawnCount->print(Out, Ctx);
+  }
 }
 
 IRStmt* ClosureDeclIRStmt::clone() {

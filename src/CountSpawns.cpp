@@ -1,5 +1,6 @@
 #include "CountSpawns.hpp"
 #include "IR.hpp"
+#include "clang/AST/Expr.h"
 #include <string>
 #include <unordered_map>
 
@@ -12,6 +13,11 @@ public:
     std::list<ForCountExpr> S;
 
     SymbolicCount(int N): N(N) {}
+    ~SymbolicCount() {
+        for (auto &fe: S) {
+            delete fe.second;
+        }
+    }
     SymbolicCount& operator+=(const int &m) {
         if (N >= 0) {
             N += m;
@@ -223,6 +229,7 @@ private:
                         delete BodyCnt;
                     }
                 } else {
+                    if (loopCount) delete loopCount;
                     delete BodyCnt;
                 }
 
@@ -243,8 +250,11 @@ public:
     }
     ~SpawnCounter() {
         delete InvalidCount;
-        for (auto &[_,SC] : ClsCntLookup) {
-            delete SC;
+        for (auto &[_, Cnt] : ClsCntLookup) {
+            delete Cnt;
+        }
+        for (auto &E: GlobalEnv) {
+            delete E;
         }
     }
     void countSpawns(IRBasicBlock *Entry) {
@@ -256,7 +266,15 @@ public:
     }
 };
 
-
+IRExpr* SymCountToExpr(SymbolicCount *C) {
+    auto *NELit = new IntLiteralIRExpr(C->N);
+    IRExpr *L = NELit;
+    for (const auto &fe : C->S) {
+        auto *MulE = new BinopIRExpr(BinopIRExpr::BINOP_MUL, fe.first, SymCountToExpr(fe.second));
+        L = new BinopIRExpr(BinopIRExpr::BINOP_ADD, L, MulE);
+    }
+    return L;
+}
 
 void CountSpawns(IRProgram &P, ASTContext &C) {
     auto IC = IRPrintContext {
@@ -271,6 +289,13 @@ void CountSpawns(IRProgram &P, ASTContext &C) {
             auto *CDS = dyn_cast<ClosureDeclIRStmt>(S);
             assert(CDS);
             llvm::outs() << CDS->Fn->getName() << " -> " << wrap(*Cnt, IC) << "\n";
+        }
+
+        for (auto &[S, Cnt]: SC.ClsCntLookup) {
+            if (!S) continue;
+            auto *CDS = dyn_cast<ClosureDeclIRStmt>(S);
+            assert(CDS);
+            CDS->annotateSpawnCount(SymCountToExpr(Cnt));
         }
     }
 }
