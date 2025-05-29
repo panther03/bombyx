@@ -788,6 +788,8 @@ private:
   IRBasicBlock* splitAt(int Index);
   IRStmt* getAt(int Index);
   void removeAt(int Index);
+  void insertAt(int Index, IRStmt *S);
+  size_t lenInsns() const;
 
   // void graphPrintStmt(llvm::raw_ostream &Out, clang::ASTContext &,
   //                     const Stmt *S, const char *NewlineSymbol);

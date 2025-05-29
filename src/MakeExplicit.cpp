@@ -303,6 +303,8 @@ public:
 ////////////////////////
 
 struct FinalizeExplicitCPS {
+  std::vector<std::pair<IRBasicBlock*, IRStmt*>> ClosureDeclWorkList;
+
   class ScopeStartMapper : public ScopedIRTraverser {
     private:
       std::unordered_map<IRBasicBlock *, IRBasicBlock *> &ScopeStarts;
@@ -337,18 +339,36 @@ struct FinalizeExplicitCPS {
       }
   };
 
-  void AddClosureDecls(
+  void PlaceClosureDecl(IRBasicBlock *StartB, IRStmt *CDS) {
+    size_t ind = 0;
+    do {
+      ind = 0;
+      for (auto it = StartB->begin(); it != StartB->end(); ind++, it++) {
+        if (isa<ESpawnIRStmt>(it->get())) {
+          goto found_decl_loc;
+        }
+      }
+      if (StartB->Succs.size() != 1) {
+        break;
+      }
+      StartB = StartB->Succs[0];
+    } while (true);
+
+    found_decl_loc:
+    StartB->insertAt(std::min(ind, StartB->lenInsns()), CDS);
+  }
+
+  void CreateClosureDecls(
     IRFunction *F,
     std::unordered_map<IRBasicBlock *, IRBasicBlock *> &ScopeStarts) {
     for (auto &B : *F) {
       if (B->Term) {
         if (auto *SNTerm = dyn_cast<SpawnNextIRStmt>(B->Term)) {
-          auto *DeclB = ScopeStarts[B.get()];
-          assert(DeclB);
+          auto *StartB = ScopeStarts[B.get()];
+          assert(StartB);
     
           auto *DeclS = new ClosureDeclIRStmt(SNTerm->Fn);
           SNTerm->Decl = DeclS;
-          DeclB->pushStmtFront(DeclS);
           for (auto &DestVar: SNTerm->Fn->Vars) {
             if (DestVar.DeclLoc == IRVarDecl::ARG) {
               // find the same variable in this function's list
@@ -359,6 +379,7 @@ struct FinalizeExplicitCPS {
               }
             }
           }
+          ClosureDeclWorkList.push_back(std::make_pair(StartB, DeclS));
         }
       }
     }
@@ -453,8 +474,11 @@ struct FinalizeExplicitCPS {
     ScopeStartMapper SSM(ScopeStarts);
     SSM.reset(F->getEntry());
     SSM.traverse(*F);
-    AddClosureDecls(F, ScopeStarts);
+    CreateClosureDecls(F, ScopeStarts);
     MakeSpawnsExplicit(F);
+    for (auto &[StartB, CDS] : ClosureDeclWorkList) {
+      PlaceClosureDecl(StartB, CDS);
+    }
   }
 };
 

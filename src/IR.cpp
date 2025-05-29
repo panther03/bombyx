@@ -461,6 +461,16 @@ void IRBasicBlock::removeAt(int Index) {
   Stmts.erase(it);
 }
 
+void IRBasicBlock::insertAt(int Index, IRStmt *S) {
+  assert(Index >= 0 && Index <= Stmts.size());
+  auto it = begin() + Index;
+  Stmts.insert(it, std::unique_ptr<IRStmt>(S));
+}
+
+size_t IRBasicBlock::lenInsns() const {
+  return Stmts.size();
+}
+
 void IRBasicBlock::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   int I = 1;
   int j = 0;

@@ -42,7 +42,7 @@ class SymbolicCountPrintWrap {
     IRPrintContext &C;
 public:
     SymbolicCountPrintWrap(SymbolicCount &SC, IRPrintContext &C) : SC(SC), C(C) {}
-    // implement operator<< to print the symbolic count
+
     friend llvm::raw_ostream& operator<<(llvm::raw_ostream &Out, const SymbolicCountPrintWrap &SCW) {
         auto &SC = SCW.SC;
         Out << "SymbolicCount(N=" << SC.N << ", S=[";
