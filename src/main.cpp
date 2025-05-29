@@ -84,7 +84,7 @@ public:
             std::string TaskJsonName = OutFilename.str() + "_task.json";
             llvm::raw_fd_ostream TaskJson(TaskJsonName, EC, llvm::sys::fs::OF_Text);
             HardCilkTarget HT(P);
-            HT.PrintTaskDescriptor(TaskJson);
+            HT.PrintTaskJson(TaskJson);
             break;
           }
         }

@@ -23,5 +23,5 @@ public:
     HardCilkTarget(IRProgram &P);
 
     void PrintHardCilk(llvm::raw_ostream &out, clang::ASTContext &C);
-    void PrintTaskDescriptor(llvm::raw_ostream &out);
+    void PrintTaskJson(llvm::raw_ostream &out);
 };
