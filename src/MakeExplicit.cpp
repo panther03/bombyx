@@ -259,7 +259,8 @@ public:
             assert(PathLookup.find(succBb) != PathLookup.end());
             assert(PathLookup[succBb] > 0);
             delete B->Term;
-            B->Term = new SpawnNextIRStmt(ContFuns[PathLookup[succBb] - 1].F);
+            SpawnNextDest = ContFuns[PathLookup[succBb] - 1].F;
+            B->Term = new SpawnNextIRStmt(SpawnNextDest);
             B->Succs.clear();
           }
         }
@@ -464,6 +465,7 @@ struct FinalizeExplicitCPS {
 
 
           S = std::make_unique<ESpawnIRStmt>(Dest, Fn, SN, Args, Local);
+          F->Info.SpawnList.insert(Fn);
         }
       }
     }

@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "Debug",
             "program": "${workspaceFolder}/build/bin/bombyx-cc",
-            "args": ["tests/implicit/nqueens.c", "a.cc"],
+            "args": ["-t", "hardcilk", "tests/implicit/fib.c", "a.cc"],
             "cwd": "${workspaceFolder}"
         }
     ]

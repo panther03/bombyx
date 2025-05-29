@@ -13,6 +13,7 @@
 #include "clang/Basic/TokenKinds.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "HardCilkTarget.hpp"
 #include "util.hpp"
 #include "IR.hpp"
 #include "Cilk1EmuTarget.hpp"
@@ -31,6 +32,10 @@ int VERBOSITY = 0;
 
 struct ConvertOpts {
   std::set<int> DumpPasses;
+  enum {
+    TG_CILK1EMU,
+    TG_HARDCILK
+  } Target = TG_CILK1EMU;
 };
 
 ConvertOpts GOpts;
@@ -69,9 +74,21 @@ public:
         CountSpawns(P, Context);
       },
       [&](IRProgram &P) -> void {
-        llvm::raw_fd_ostream Cilk1Out(OutFilename, EC, llvm::sys::fs::OF_Text);
-        PrintCilk1Emu(P, Cilk1Out, Context, CI);
-      }
+        switch (GOpts.Target) {
+          case ConvertOpts::TG_CILK1EMU: {
+            llvm::raw_fd_ostream Cilk1Out(OutFilename, EC, llvm::sys::fs::OF_Text);
+            PrintCilk1Emu(P, Cilk1Out, Context, CI);
+            break;
+          };
+          case ConvertOpts::TG_HARDCILK: {
+            std::string TaskJsonName = OutFilename.str() + "_task.json";
+            llvm::raw_fd_ostream TaskJson(TaskJsonName, EC, llvm::sys::fs::OF_Text);
+            HardCilkTarget HT(P);
+            HT.PrintTaskDescriptor(TaskJson);
+            break;
+          }
+        }
+      },
     };
 
     IRPrintContext Ctx = IRPrintContext{.ASTCtx = Context, .NewlineSymbol = "\n"};
@@ -167,30 +184,53 @@ private:
   StringRef OutFilename;
 };
 
+void set_target(const char *targ)  {
+  if (strcmp(targ, "cilk1emu") == 0) {
+    GOpts.Target = ConvertOpts::TG_CILK1EMU;
+  } else if (strcmp(targ, "hardcilk") == 0) {
+    GOpts.Target = ConvertOpts::TG_HARDCILK;
+  } else if (strcmp(targ, "help") == 0) {
+    fprintf(stderr, "Available targets: cilk1emu, hardcilk\n");
+    exit(EXIT_SUCCESS);
+  } else {
+    PANIC("unrecognized target %s", targ);
+  }
+}
+
 int main(int argc, char *argv[]) {
   opterr = 0;
   int c;
 
   static struct option long_options[] = {
     {"fdump-dot", required_argument, 0, 0 },
+    {"target", required_argument, 0, 0 },
   };
   int option_index = -1;
-  while ((c = getopt_long(argc, argv, "vV", long_options, &option_index)) != -1) {
+  while ((c = getopt_long(argc, argv, "vVt:", long_options, &option_index)) != -1) {
     switch (c) {
     case 0: 
-      if (option_index == 0) {
-        char* ps = optarg;
-        char* p = optarg;
-        do {
-          char po = *p;
-          if (*p == 0 || *p == ',') {
-            *p = 0;
-            GOpts.DumpPasses.insert(atoi(ps));
-            ps = p + 1;
-          }
-          *p = po;
-        } while (*(p++) != 0);
+      switch (option_index) {
+        case 0: {
+          char* ps = optarg;
+          char* p = optarg;
+          do {
+            char po = *p;
+            if (*p == 0 || *p == ',') {
+              *p = 0;
+              GOpts.DumpPasses.insert(atoi(ps));
+              ps = p + 1;
+            }
+            *p = po;
+          } while (*(p++) != 0);
+          break;
+        }
+        case 1: {
+          set_target(optarg);
+        }
       }
+      break;
+    case 't':
+      set_target(optarg);
       break;
     case 'v':
       VERBOSITY = 1;
@@ -198,6 +238,15 @@ int main(int argc, char *argv[]) {
     case 'V':
       VERBOSITY = 2;
       break;
+    default: /* '?' */
+      fprintf(stderr, 
+        "Usage: %s [OPTION]... INFILE OUTFILE\n"
+        "   -v                      \t verbose\n"
+        "   -V                      \t very verbose\n"
+        "       --fdump-dot=<PASSES>\t Indices of passes to dump GraphViz output after, comma separated\n"
+        "   -t, --target=<TARGET>\t Output backend. Use TARGET=help to print available\n",
+              argv[0]);
+      exit(EXIT_FAILURE);
     }
   }
 

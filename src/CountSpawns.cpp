@@ -284,11 +284,13 @@ void CountSpawns(IRProgram &P, ASTContext &C) {
     for (auto &F: P) {
         SpawnCounter SC;
         SC.countSpawns(F->getEntry());
-        for (auto &[S, Cnt]: SC.ClsCntLookup) {
-            if (!S) continue;
-            auto *CDS = dyn_cast<ClosureDeclIRStmt>(S);
-            assert(CDS);
-            llvm::outs() << CDS->Fn->getName() << " -> " << wrap(*Cnt, IC) << "\n";
+        INFO {
+            for (auto &[S, Cnt]: SC.ClsCntLookup) {
+                if (!S) continue;
+                auto *CDS = dyn_cast<ClosureDeclIRStmt>(S);
+                assert(CDS);
+                llvm::outs() << CDS->Fn->getName() << " -> " << wrap(*Cnt, IC) << "\n";
+            }
         }
 
         for (auto &[S, Cnt]: SC.ClsCntLookup) {

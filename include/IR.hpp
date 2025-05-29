@@ -854,7 +854,6 @@ public:
   struct IRFunctionInfo {
     bool IsTask = false;
     const FunctionDecl *RootFun = nullptr;
-    std::set<IRFunction*> SendArgList;
     std::set<IRFunction*> SpawnList;
     std::set<IRFunction*> SpawnNextList;
   };
