@@ -1,28 +1,27 @@
-#include <cstdlib>
-#include <unistd.h>
-#include <stdlib.h>
-#include <getopt.h>
+#include "clang/Basic/DiagnosticIDs.h"
+#include "clang/Basic/TokenKinds.h"
+#include "llvm/Support/raw_ostream.h"
 #include <clang/AST/ASTConsumer.h>
 #include <clang/AST/Stmt.h>
 #include <clang/Basic/SourceLocation.h>
 #include <clang/Basic/SourceManager.h>
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Tooling/Tooling.h>
-#include <iostream>
+#include <cstdlib>
 #include <filesystem>
-#include "clang/Basic/DiagnosticIDs.h"
-#include "clang/Basic/TokenKinds.h"
-#include "llvm/Support/raw_ostream.h"
+#include <getopt.h>
+#include <iostream>
+#include <stdlib.h>
+#include <unistd.h>
 
-#include "HardCilkTarget.hpp"
-#include "util.hpp"
-#include "IR.hpp"
 #include "Cilk1EmuTarget.hpp"
+#include "CountSpawns.hpp"
+#include "DAE.hpp"
+#include "HardCilkTarget.hpp"
+#include "IR.hpp"
 #include "MakeExplicit.hpp"
 #include "OpenCilk2IR.hpp"
-#include "DAE.hpp"
-#include "CountSpawns.hpp"
-
+#include "util.hpp"
 
 using namespace clang;
 using namespace clang::tooling;
@@ -33,10 +32,7 @@ int VERBOSITY = 0;
 
 struct ConvertOpts {
   std::set<int> DumpPasses;
-  enum {
-    TG_CILK1EMU,
-    TG_HARDCILK
-  } Target = TG_CILK1EMU;
+  enum { TG_CILK1EMU, TG_HARDCILK } Target = TG_CILK1EMU;
   bool HCGenDriver = false;
 };
 
@@ -53,7 +49,7 @@ public:
   explicit CilkConvert(clang::CompilerInstance &CI, StringRef OutFilename)
       : CI(CI), OutFilename(OutFilename) {}
 
-  using PassFn = std::function<void(IRProgram&)>;
+  using PassFn = std::function<void(IRProgram &)>;
   void HandleTranslationUnit(clang::ASTContext &Context) {
     std::error_code EC;
     auto &SM = CI.getSourceManager();
@@ -62,23 +58,16 @@ public:
       exit(EXIT_FAILURE);
     }
 
-    std::vector<PassFn> Passes {
-      [&](IRProgram& P) -> void {
-        OpenCilk2IR(P, &Context, SM);
-      },
-      [&](IRProgram &P) -> void {
-        DAE(P);
-      },
-      [&](IRProgram& P) -> void {
-        MakeExplicit(P);
-      },
-      [&](IRProgram& P) -> void {
-        CountSpawns(P, Context);
-      },
-      [&](IRProgram &P) -> void {
-        switch (GOpts.Target) {
+    std::vector<PassFn> Passes{
+        [&](IRProgram &P) -> void { OpenCilk2IR(P, &Context, SM); },
+        [&](IRProgram &P) -> void { DAE(P); },
+        [&](IRProgram &P) -> void { MakeExplicit(P); },
+        [&](IRProgram &P) -> void { CountSpawns(P, Context); },
+        [&](IRProgram &P) -> void {
+          switch (GOpts.Target) {
           case ConvertOpts::TG_CILK1EMU: {
-            llvm::raw_fd_ostream Cilk1Out(OutFilename, EC, llvm::sys::fs::OF_Text);
+            llvm::raw_fd_ostream Cilk1Out(OutFilename, EC,
+                                          llvm::sys::fs::OF_Text);
             PrintCilk1Emu(P, Cilk1Out, Context, CI);
             break;
           };
@@ -87,30 +76,37 @@ public:
             std::filesystem::create_directories(OutPath);
             std::string AppName = OutPath.stem().string();
             HardCilkTarget HT(P, AppName);
-            std::string DescJsonName = OutFilename.str() + "/" + AppName + "_descriptors.json";
-            llvm::raw_fd_ostream DescJson(DescJsonName, EC, llvm::sys::fs::OF_Text);
+            std::string DescJsonName =
+                OutFilename.str() + "/" + AppName + "_descriptors.json";
+            llvm::raw_fd_ostream DescJson(DescJsonName, EC,
+                                          llvm::sys::fs::OF_Text);
             HT.PrintDescJson(DescJson);
 
-            std::string HLSCodeName = OutFilename.str() + "/" + AppName + ".cpp";
-            llvm::raw_fd_ostream HLSCode(HLSCodeName, EC, llvm::sys::fs::OF_Text);
+            std::string HLSCodeName =
+                OutFilename.str() + "/" + AppName + ".cpp";
+            llvm::raw_fd_ostream HLSCode(HLSCodeName, EC,
+                                         llvm::sys::fs::OF_Text);
             HT.PrintHardCilk(HLSCode, Context);
 
-            std::string DefsName = OutFilename.str() + "/" + AppName + "_defs.h";
+            std::string DefsName =
+                OutFilename.str() + "/" + AppName + "_defs.h";
             llvm::raw_fd_ostream Defs(DefsName, EC, llvm::sys::fs::OF_Text);
             HT.PrintDefs(Defs);
 
             if (GOpts.HCGenDriver) {
-              std::string DriverName = OutFilename.str() + "/" + AppName + "_driver.cpp";
+              std::string DriverName =
+                  OutFilename.str() + "/" + AppName + "_driver.cpp";
               llvm::raw_fd_ostream Driver(DefsName, EC, llvm::sys::fs::OF_Text);
               HT.PrintDriver(Driver);
             }
             break;
           }
-        }
-      },
+          }
+        },
     };
 
-    IRPrintContext Ctx = IRPrintContext{.ASTCtx = Context, .NewlineSymbol = "\n"};
+    IRPrintContext Ctx =
+        IRPrintContext{.ASTCtx = Context, .NewlineSymbol = "\n"};
 
     for (int i = 0; i < Passes.size(); i++) {
       Passes[i](P);
@@ -128,57 +124,54 @@ public:
 };
 
 class BombyxPragmaHandler : public clang::PragmaHandler {
-  public:
-    BombyxPragmaHandler() : PragmaHandler("BOMBYX") {}
-  
-      void HandlePragma(clang::Preprocessor &PP, 
-                       clang::PragmaIntroducer Introducer,
-                       clang::Token &FirstToken) override {          
+public:
+  BombyxPragmaHandler() : PragmaHandler("BOMBYX") {}
 
-          clang::Token Tok;
-          PP.Lex(Tok);
-          // Check if we got an identifier (like "DAE")
-          if (Tok.is(clang::tok::identifier)) {
-              std::string Arg = PP.getSpelling(Tok);
+  void HandlePragma(clang::Preprocessor &PP, clang::PragmaIntroducer Introducer,
+                    clang::Token &FirstToken) override {
 
-              if (Arg != "DAE") {
-                  PANIC("unknown bombyx pragma %s", Arg.c_str());
-              }
-          }
-          else {
-              PP.Diag(Tok.getLocation(), clang::diag::err_expected_after) 
-                  << "BOMBYX";
-          }
+    clang::Token Tok;
+    PP.Lex(Tok);
+    // Check if we got an identifier (like "DAE")
+    if (Tok.is(clang::tok::identifier)) {
+      std::string Arg = PP.getSpelling(Tok);
 
-          // Consume remaining tokens until end of directive
-          PP.Lex(Tok);
-          while (!Tok.is(clang::tok::eod)) {
-              PP.Lex(Tok);
-          }
-
-          // 1. Create the tokens
-          Token LabelTok;
-          LabelTok.startToken();
-          LabelTok.setKind(tok::identifier);
-          LabelTok.setIdentifierInfo(PP.getIdentifierInfo("__bombyx_dae_here"));
-
-          Token ColTok;
-          ColTok.startToken();
-          ColTok.setKind(tok::colon);
-
-          SmallVector<Token, 2> TokenList;
-          TokenList.push_back(LabelTok);
-          TokenList.push_back(ColTok);
-
-          for(Token& Tok : TokenList)
-            Tok.setLocation(FirstToken.getLocation());
-
-          ArrayRef TokenArray = TokenList;
-          PP.EnterTokenStream(TokenArray,          
-            /*DisableMacroExpansion=*/false,
-           /*IsReinject=*/false);
+      if (Arg != "DAE") {
+        PANIC("unknown bombyx pragma %s", Arg.c_str());
       }
-  };
+    } else {
+      PP.Diag(Tok.getLocation(), clang::diag::err_expected_after) << "BOMBYX";
+    }
+
+    // Consume remaining tokens until end of directive
+    PP.Lex(Tok);
+    while (!Tok.is(clang::tok::eod)) {
+      PP.Lex(Tok);
+    }
+
+    // 1. Create the tokens
+    Token LabelTok;
+    LabelTok.startToken();
+    LabelTok.setKind(tok::identifier);
+    LabelTok.setIdentifierInfo(PP.getIdentifierInfo("__bombyx_dae_here"));
+
+    Token ColTok;
+    ColTok.startToken();
+    ColTok.setKind(tok::colon);
+
+    SmallVector<Token, 2> TokenList;
+    TokenList.push_back(LabelTok);
+    TokenList.push_back(ColTok);
+
+    for (Token &Tok : TokenList)
+      Tok.setLocation(FirstToken.getLocation());
+
+    ArrayRef TokenArray = TokenList;
+    PP.EnterTokenStream(TokenArray,
+                        /*DisableMacroExpansion=*/false,
+                        /*IsReinject=*/false);
+  }
+};
 
 // Frontened action to create the custom AST consumer
 class CilkConvertAction : public clang::ASTFrontendAction {
@@ -203,7 +196,7 @@ private:
   StringRef OutFilename;
 };
 
-void set_target(const char *targ)  {
+void set_target(const char *targ) {
   if (strcmp(targ, "cilk1emu") == 0) {
     GOpts.Target = ConvertOpts::TG_CILK1EMU;
   } else if (strcmp(targ, "hardcilk") == 0) {
@@ -221,37 +214,38 @@ int main(int argc, char *argv[]) {
   int c;
 
   static struct option long_options[] = {
-    {"fdump-dot", required_argument, 0, 0 },
-    {"fgen-driver", no_argument, 0, 0 },
-    {"target", required_argument, 0, 0 },
+      {"fdump-dot", required_argument, 0, 0},
+      {"fgen-driver", no_argument, 0, 0},
+      {"target", required_argument, 0, 0},
   };
   int option_index = -1;
-  while ((c = getopt_long(argc, argv, "vVt:", long_options, &option_index)) != -1) {
+  while ((c = getopt_long(argc, argv, "vVt:", long_options, &option_index)) !=
+         -1) {
     switch (c) {
-    case 0: 
+    case 0:
       switch (option_index) {
-        case 0: {
-          char* ps = optarg;
-          char* p = optarg;
-          do {
-            char po = *p;
-            if (*p == 0 || *p == ',') {
-              *p = 0;
-              GOpts.DumpPasses.insert(atoi(ps));
-              ps = p + 1;
-            }
-            *p = po;
-          } while (*(p++) != 0);
-          break;
-        }
-        case 1: {
-          GOpts.HCGenDriver = true;
-          break;
-        }
-        case 2: {
-          set_target(optarg);
-          break;
-        }
+      case 0: {
+        char *ps = optarg;
+        char *p = optarg;
+        do {
+          char po = *p;
+          if (*p == 0 || *p == ',') {
+            *p = 0;
+            GOpts.DumpPasses.insert(atoi(ps));
+            ps = p + 1;
+          }
+          *p = po;
+        } while (*(p++) != 0);
+        break;
+      }
+      case 1: {
+        GOpts.HCGenDriver = true;
+        break;
+      }
+      case 2: {
+        set_target(optarg);
+        break;
+      }
       }
       break;
     case 't':
@@ -264,15 +258,18 @@ int main(int argc, char *argv[]) {
       VERBOSITY = 2;
       break;
     default: /* '?' */
-      fprintf(stderr, 
-        "Usage: %s [OPTION]... INFILE OUTNAME\n"
-        "OUTNAME can be a file or folder depending on TARGET.\n"
-        "   -v                      \t verbose\n"
-        "   -V                      \t very verbose\n"
-        "       --fdump-dot=<PASSES>\t Indices of passes to dump GraphViz output after, comma separated\n"
-        "       --fgen-driver       \t (HardCilk only) generate driver code"
-        "   -t, --target=<TARGET>\t Output backend. Use TARGET=help to print available\n",
-              argv[0]);
+      fprintf(
+          stderr,
+          "Usage: %s [OPTION]... INFILE OUTNAME\n"
+          "OUTNAME can be a file or folder depending on TARGET.\n"
+          "   -v                      \t verbose\n"
+          "   -V                      \t very verbose\n"
+          "       --fdump-dot=<PASSES>\t Indices of passes to dump GraphViz "
+          "output after, comma separated\n"
+          "       --fgen-driver       \t (HardCilk only) generate driver code"
+          "   -t, --target=<TARGET>\t Output backend. Use TARGET=help to print "
+          "available\n",
+          argv[0]);
       exit(EXIT_FAILURE);
     }
   }
@@ -284,13 +281,9 @@ int main(int argc, char *argv[]) {
   }
 
   std::vector<std::string> compilationFlags = {
-    OPENCILK_HOME "/bin/clang",
-    "-c",
-        "-Wall",
-    "-Wno-unused-label",
-    "-fopencilk",
-    "-fsyntax-only",
-    };
+      OPENCILK_HOME "/bin/clang", "-c",         "-Wall",
+      "-Wno-unused-label",        "-fopencilk", "-fsyntax-only",
+  };
   compilationFlags.push_back(argv[optind]);
 
   std::shared_ptr<clang::PCHContainerOperations> PCHContainerOps =
@@ -301,7 +294,7 @@ int main(int argc, char *argv[]) {
       new clang::FileManager(FSOpts));
 
   clang::tooling::ToolInvocation invocation(
-      compilationFlags, std::make_unique<CilkConvertAction>(argv[optind+1]), Files.get(),
-      PCHContainerOps);
+      compilationFlags, std::make_unique<CilkConvertAction>(argv[optind + 1]),
+      Files.get(), PCHContainerOps);
   return !invocation.run();
-} 
+}

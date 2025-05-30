@@ -1,6 +1,6 @@
-#pragma once 
-#include <clang/AST/ASTFwd.h>
+#pragma once
 #include <clang/AST/ASTContext.h>
+#include <clang/AST/ASTFwd.h>
 #include <clang/Basic/SourceManager.h>
 
 #include "IR.hpp"

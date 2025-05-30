@@ -1,9 +1,9 @@
 #pragma once
-#include <clang/AST/Stmt.h>
 #include <clang/AST/Expr.h>
+#include <clang/AST/Stmt.h>
 
-#include <stdio.h>
 #include <deque>
+#include <stdio.h>
 
 extern int VERBOSITY;
 

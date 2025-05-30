@@ -35,14 +35,14 @@ struct SymTable {
 };
 
 extern SymTable GSymTable;
-extern const std::string& GetSym(Sym S);
+extern const std::string &GetSym(Sym S);
 extern Sym PutSym(std::string Name);
 
 struct IRVarDecl {
   IRType Type;
   Sym Name;
   enum { LOCAL, ARG } DeclLoc;
-  bool IsEphemeral = false; 
+  bool IsEphemeral = false;
 };
 
 typedef std::variant<ASTVarRef, IRFunction *> IRFunRef;
@@ -56,9 +56,9 @@ struct IRPrintContext {
   clang::ASTContext &ASTCtx;
   const char *NewlineSymbol;
   bool GraphVizEscapeChars = false;
-  std::function<void(llvm::raw_ostream&, IRVarRef)> IdentCB = &identPrintSimple;
+  std::function<void(llvm::raw_ostream &, IRVarRef)> IdentCB =
+      &identPrintSimple;
 };
-
 
 class IRExpr {
 public:
@@ -95,14 +95,10 @@ public:
     assert(false && "IRExpr::print not implemented");
   }
 
-  virtual IRExpr* clone() {
-    assert(false && "IRExpr::clone not implemented");
-  }
+  virtual IRExpr *clone() { assert(false && "IRExpr::clone not implemented"); }
 
   virtual ~IRExpr() = default;
-  virtual bool operator==(const IRExpr &Other) const {
-    return false;
-  }
+  virtual bool operator==(const IRExpr &Other) const { return false; }
 };
 
 struct IRLvalExpr : public IRExpr {
@@ -132,7 +128,7 @@ public:
   }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRExpr* clone() override;
+  virtual IRExpr *clone() override;
 };
 
 struct DRefIRExpr : IRLvalExpr {
@@ -144,11 +140,12 @@ public:
   static bool classof(const IRExpr *E) { return E->getKind() == EXK_LVAL_DREF; }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRExpr* clone() override;
+  virtual IRExpr *clone() override;
 };
 
 struct IdentIRExpr : IRLvalExpr {
   IRVarRef Ident;
+
 public:
   IdentIRExpr(IRVarRef Ident) : Ident(Ident), IRLvalExpr(EXK_LVAL_IDENT) {}
 
@@ -157,7 +154,7 @@ public:
   }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRExpr* clone() override;
+  virtual IRExpr *clone() override;
 };
 
 /*struct SymVarIRExpr : IRExpr {
@@ -186,7 +183,7 @@ public:
     return E->getKind() == EXK_LVAL_ACCESS;
   }
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRExpr* clone() override;
+  virtual IRExpr *clone() override;
 };
 
 struct RefIRExpr : IRExpr {
@@ -197,7 +194,7 @@ public:
 
   static bool classof(const IRExpr *E) { return E->getKind() == EXK_REF; }
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRExpr* clone() override;
+  virtual IRExpr *clone() override;
 };
 
 struct BinopIRExpr : IRExpr {
@@ -280,7 +277,7 @@ public:
       break;
     default:
       llvm::errs() << "Unknown binary operator\n";
-      llvm_unreachable("Unknown binary operator");  
+      llvm_unreachable("Unknown binary operator");
     }
   }
 
@@ -295,7 +292,7 @@ public:
   static bool classof(const IRExpr *E) { return E->getKind() == EXK_BINOP; }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRExpr* clone() override;
+  virtual IRExpr *clone() override;
 };
 
 struct UnopIRExpr : IRExpr {
@@ -312,7 +309,7 @@ public:
 
   const UnopOp Op;
   std::unique_ptr<IRExpr> Expr;
-  bool printUnop(const char * &Out) const {
+  bool printUnop(const char *&Out) const {
     switch (Op) {
     case UNOP_NEG:
       Out = "-";
@@ -329,7 +326,7 @@ public:
     case UNOP_POSTDEC:
       Out = "--";
       return true;
-    case UNOP_PREINC: 
+    case UNOP_PREINC:
       Out = "++";
       return false;
     case UNOP_POSTINC:
@@ -345,7 +342,7 @@ public:
   static bool classof(const IRExpr *E) { return E->getKind() == EXK_UNOP; }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRExpr* clone() override;
+  virtual IRExpr *clone() override;
 };
 
 struct ASTLiteralIRExpr : IRExpr {
@@ -358,7 +355,7 @@ public:
   static bool classof(const IRExpr *E) { return E->getKind() == EXK_LITERAL; }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRExpr* clone() override;
+  virtual IRExpr *clone() override;
 };
 
 struct IntLiteralIRExpr : IRExpr {
@@ -367,27 +364,29 @@ public:
 
   IntLiteralIRExpr(int Lit) : Lit(Lit), IRExpr(EXK_INT_LITERAL) {}
 
-  static bool classof(const IRExpr *E) { return E->getKind() == EXK_INT_LITERAL; }
+  static bool classof(const IRExpr *E) {
+    return E->getKind() == EXK_INT_LITERAL;
+  }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override {
     Out << Lit;
   }
-  virtual IRExpr* clone() override {
-    return new IntLiteralIRExpr(Lit);
-  }
+  virtual IRExpr *clone() override { return new IntLiteralIRExpr(Lit); }
 };
 
 struct CastIRExpr : IRExpr {
-private: 
+private:
   IRType CastType;
+
 public:
   std::unique_ptr<IRExpr> E;
-  CastIRExpr(IRType CastType, IRExpr *E) : CastType(CastType), E(E), IRExpr(EXK_CAST) {}
+  CastIRExpr(IRType CastType, IRExpr *E)
+      : CastType(CastType), E(E), IRExpr(EXK_CAST) {}
 
   static bool classof(const IRExpr *E) { return E->getKind() == EXK_CAST; }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRExpr* clone() override;
+  virtual IRExpr *clone() override;
 };
 
 struct FIdentIRExpr : IRExpr {
@@ -398,7 +397,7 @@ public:
   static bool classof(const IRExpr *FR) { return FR->getKind() == EXK_FIDENT; }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRExpr* clone() override;
+  virtual IRExpr *clone() override;
 };
 
 struct ISpawnIRExpr : IRExpr {
@@ -406,34 +405,34 @@ struct ISpawnIRExpr : IRExpr {
   std::vector<std::unique_ptr<IRExpr>> Args;
 
 public:
-  ISpawnIRExpr(IRFunRef Fn, std::vector<IRExpr*> InArgs)
+  ISpawnIRExpr(IRFunRef Fn, std::vector<IRExpr *> InArgs)
       : Fn(Fn), IRExpr(EXK_ISPAWN) {
-        for (auto *Arg : InArgs) {
-          Args.push_back(std::unique_ptr<IRExpr>(Arg));
-        }
-      }
+    for (auto *Arg : InArgs) {
+      Args.push_back(std::unique_ptr<IRExpr>(Arg));
+    }
+  }
 
   static bool classof(const IRExpr *E) { return E->getKind() == EXK_ISPAWN; }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRExpr* clone() override;
+  virtual IRExpr *clone() override;
 };
 
 struct CallIRExpr : IRExpr {
 public:
   IRFunRef Fn;
   std::vector<std::unique_ptr<IRExpr>> Args;
-  CallIRExpr(IRFunRef Fn, std::vector<IRExpr*> InArgs)
+  CallIRExpr(IRFunRef Fn, std::vector<IRExpr *> InArgs)
       : Fn(Fn), IRExpr(EXK_CALL) {
-        for (auto *Arg : InArgs) {
-          Args.push_back(std::unique_ptr<IRExpr>(Arg));
-        }
-      }
+    for (auto *Arg : InArgs) {
+      Args.push_back(std::unique_ptr<IRExpr>(Arg));
+    }
+  }
 
   static bool classof(const IRExpr *E) { return E->getKind() == EXK_CALL; }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRExpr* clone() override;
+  virtual IRExpr *clone() override;
 };
 
 class IRStmt {
@@ -453,9 +452,9 @@ public:
     STK_COPY,
     STK_SCOPE_ANNOT,
 
-//    ForInc,
-//    ForInit,
-//    VoidSpawn
+    //    ForInc,
+    //    ForInit,
+    //    VoidSpawn
   };
 
 private:
@@ -474,9 +473,7 @@ public:
     assert(false && "IRStmt::print not implemented");
   }
 
-  virtual IRStmt* clone() {
-    assert(false && "IRStmt::clone not implemented");
-  }
+  virtual IRStmt *clone() { assert(false && "IRStmt::clone not implemented"); }
 
   virtual ~IRStmt() = default;
 };
@@ -485,6 +482,7 @@ struct ClosureDeclIRStmt : IRStmt {
   IRFunction *Fn;
   std::unique_ptr<IRExpr> SpawnCount;
   std::unordered_map<IRVarRef, IRVarRef> Caller2Callee;
+
 public:
   ClosureDeclIRStmt(IRFunction *Fn) : Fn(Fn), IRStmt(STK_CLOSURE_DECL) {}
 
@@ -501,7 +499,7 @@ public:
   }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRStmt* clone() override;
+  virtual IRStmt *clone() override;
 };
 
 struct IRTerminatorStmt : public IRStmt {
@@ -529,7 +527,7 @@ public:
   }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRStmt* clone() override;
+  virtual IRStmt *clone() override;
 };
 
 struct IfIRStmt : IRTerminatorStmt {
@@ -543,7 +541,7 @@ public:
   }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRStmt* clone() override;
+  virtual IRStmt *clone() override;
 };
 
 struct SpawnNextIRStmt : IRTerminatorStmt {
@@ -553,16 +551,14 @@ struct SpawnNextIRStmt : IRTerminatorStmt {
 public:
   SpawnNextIRStmt(IRFunction *Fn) : Fn(Fn), IRTerminatorStmt(STK_SPAWN_NEXT) {}
 
-  void setDecl(ClosureDeclIRStmt *InDecl) {
-    Decl = InDecl;
-  }
+  void setDecl(ClosureDeclIRStmt *InDecl) { Decl = InDecl; }
 
   static bool classof(const IRStmt *S) {
     return S->getKind() == IRStmt::STK_SPAWN_NEXT;
   }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRStmt* clone() override;
+  virtual IRStmt *clone() override;
 };
 
 struct SyncIRStmt : IRTerminatorStmt {
@@ -574,9 +570,9 @@ public:
   }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRStmt* clone() override;
+  virtual IRStmt *clone() override;
 };
-  
+
 struct ReturnIRStmt : IRTerminatorStmt {
   std::unique_ptr<IRExpr> RetVal;
 
@@ -588,32 +584,32 @@ public:
   }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRStmt* clone() override;
+  virtual IRStmt *clone() override;
 };
 
 struct ESpawnIRStmt : IRStmt {
 public:
   std::unique_ptr<IRLvalExpr> Dest;
   IRFunction *Fn;
-  SpawnNextIRStmt* SN;
+  SpawnNextIRStmt *SN;
   std::vector<std::unique_ptr<IRExpr>> Args;
   bool Local;
 
 public:
-  ESpawnIRStmt(IRLvalExpr *Dest, IRFunction *Fn, SpawnNextIRStmt* SN,
-               std::vector<IRExpr*> InArgs, bool Local)
+  ESpawnIRStmt(IRLvalExpr *Dest, IRFunction *Fn, SpawnNextIRStmt *SN,
+               std::vector<IRExpr *> InArgs, bool Local)
       : Dest(Dest), Fn(Fn), SN(SN), IRStmt(STK_ESPAWN), Local(Local) {
-        for (auto *Arg : InArgs) {
-          Args.push_back(std::unique_ptr<IRExpr>(Arg));
-        }
-      }
+    for (auto *Arg : InArgs) {
+      Args.push_back(std::unique_ptr<IRExpr>(Arg));
+    }
+  }
 
   static bool classof(const IRStmt *S) {
     return S->getKind() == IRStmt::STK_ESPAWN;
   }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRStmt* clone() override;
+  virtual IRStmt *clone() override;
 };
 
 struct ExprWrapIRStmt : IRStmt {
@@ -627,7 +623,7 @@ public:
   }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRStmt* clone() override;
+  virtual IRStmt *clone() override;
 };
 
 struct StoreIRStmt : IRStmt {
@@ -643,13 +639,13 @@ public:
   }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRStmt* clone() override;
+  virtual IRStmt *clone() override;
 };
 
 struct CopyIRStmt : IRStmt {
   std::unique_ptr<IRExpr> Src;
-  
-  public:
+
+public:
   IRVarRef Dest;
   CopyIRStmt(IRVarRef Dest, IRExpr *Src)
       : Dest(Dest), Src(Src), IRStmt(STK_COPY) {}
@@ -659,7 +655,7 @@ struct CopyIRStmt : IRStmt {
   }
 
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRStmt* clone() override;
+  virtual IRStmt *clone() override;
 };
 
 struct ScopeAnnotIRStmt : IRStmt {
@@ -672,125 +668,142 @@ public:
     return S->getKind() == IRStmt::STK_SCOPE_ANNOT;
   }
   virtual void print(llvm::raw_ostream &Out, IRPrintContext &Ctx) override;
-  virtual IRStmt* clone() override;
+  virtual IRStmt *clone() override;
 };
 
-
 // TODO not really the right construct
-template <typename Derived>
-class IRExprVisitor {
-  private:
-    int Depth = -1;
-  public:
-    void Visit(IRExpr *E) {
-      Depth++;
-      Derived* DerivedThis = static_cast<Derived*>(this);
-      switch (E->getKind()) {
-        case IRExpr::EXK_BINOP: DerivedThis->VisitBinop(llvm::dyn_cast<BinopIRExpr>(E)); return;
-        case IRExpr::EXK_UNOP: DerivedThis->VisitUnop(llvm::dyn_cast<UnopIRExpr>(E)); return;
-        case IRExpr::EXK_CALL: DerivedThis->VisitCall(llvm::dyn_cast<CallIRExpr>(E)); return;
-        case IRExpr::EXK_ISPAWN: DerivedThis->VisitISpawn(llvm::dyn_cast<ISpawnIRExpr>(E)); return;
-        case IRExpr::EXK_FIDENT: DerivedThis->VisitFIdent(llvm::dyn_cast<FIdentIRExpr>(E)); return;
-        case IRExpr::EXK_REF: DerivedThis->VisitRef(llvm::dyn_cast<RefIRExpr>(E)); return;
-        case IRExpr::EXK_LITERAL: DerivedThis->VisitLiteral(llvm::dyn_cast<ASTLiteralIRExpr>(E)); return;
-        case IRExpr::EXK_INT_LITERAL: DerivedThis->VisitIntLiteral(llvm::dyn_cast<IntLiteralIRExpr>(E)); return;
-        case IRExpr::EXK_LVAL_IDENT: DerivedThis->VisitIdent(llvm::dyn_cast<IdentIRExpr>(E)); return;
-        case IRExpr::EXK_LVAL_ACCESS: DerivedThis->VisitAccess(llvm::dyn_cast<AccessIRExpr>(E)); return;
-        case IRExpr::EXK_LVAL_DREF: DerivedThis->VisitDRef(llvm::dyn_cast<DRefIRExpr>(E)); return;
-        case IRExpr::EXK_LVAL_INDEX: DerivedThis->VisitIndex(llvm::dyn_cast<IndexIRExpr>(E)); return;    
-        case IRExpr::EXK_CAST: DerivedThis->VisitCast(llvm::dyn_cast<CastIRExpr>(E)); return;    
-        default: PANIC("impossible expr");
-      }
+template <typename Derived> class IRExprVisitor {
+private:
+  int Depth = -1;
+
+public:
+  void Visit(IRExpr *E) {
+    Depth++;
+    Derived *DerivedThis = static_cast<Derived *>(this);
+    switch (E->getKind()) {
+    case IRExpr::EXK_BINOP:
+      DerivedThis->VisitBinop(llvm::dyn_cast<BinopIRExpr>(E));
+      return;
+    case IRExpr::EXK_UNOP:
+      DerivedThis->VisitUnop(llvm::dyn_cast<UnopIRExpr>(E));
+      return;
+    case IRExpr::EXK_CALL:
+      DerivedThis->VisitCall(llvm::dyn_cast<CallIRExpr>(E));
+      return;
+    case IRExpr::EXK_ISPAWN:
+      DerivedThis->VisitISpawn(llvm::dyn_cast<ISpawnIRExpr>(E));
+      return;
+    case IRExpr::EXK_FIDENT:
+      DerivedThis->VisitFIdent(llvm::dyn_cast<FIdentIRExpr>(E));
+      return;
+    case IRExpr::EXK_REF:
+      DerivedThis->VisitRef(llvm::dyn_cast<RefIRExpr>(E));
+      return;
+    case IRExpr::EXK_LITERAL:
+      DerivedThis->VisitLiteral(llvm::dyn_cast<ASTLiteralIRExpr>(E));
+      return;
+    case IRExpr::EXK_INT_LITERAL:
+      DerivedThis->VisitIntLiteral(llvm::dyn_cast<IntLiteralIRExpr>(E));
+      return;
+    case IRExpr::EXK_LVAL_IDENT:
+      DerivedThis->VisitIdent(llvm::dyn_cast<IdentIRExpr>(E));
+      return;
+    case IRExpr::EXK_LVAL_ACCESS:
+      DerivedThis->VisitAccess(llvm::dyn_cast<AccessIRExpr>(E));
+      return;
+    case IRExpr::EXK_LVAL_DREF:
+      DerivedThis->VisitDRef(llvm::dyn_cast<DRefIRExpr>(E));
+      return;
+    case IRExpr::EXK_LVAL_INDEX:
+      DerivedThis->VisitIndex(llvm::dyn_cast<IndexIRExpr>(E));
+      return;
+    case IRExpr::EXK_CAST:
+      DerivedThis->VisitCast(llvm::dyn_cast<CastIRExpr>(E));
+      return;
+    default:
+      PANIC("impossible expr");
     }
-    void VisitBinop(BinopIRExpr *Node) {
-      Visit(Node->Left.get());
-      Visit(Node->Right.get());
+  }
+  void VisitBinop(BinopIRExpr *Node) {
+    Visit(Node->Left.get());
+    Visit(Node->Right.get());
+  }
+  void VisitUnop(UnopIRExpr *Node) { Visit(Node->Expr.get()); }
+  void VisitRef(RefIRExpr *Node) { Visit(Node->E.get()); }
+  void VisitLiteral(ASTLiteralIRExpr *Node) {}
+  void VisitIntLiteral(IntLiteralIRExpr *Node) {}
+  void VisitFIdent(FIdentIRExpr *Node) {}
+  void VisitISpawn(ISpawnIRExpr *Node) {
+    for (auto &Arg : Node->Args) {
+      Visit(Arg.get());
     }
-    void VisitUnop(UnopIRExpr *Node) {
-      Visit(Node->Expr.get());
+  }
+  void VisitCall(CallIRExpr *Node) {
+    for (auto &Arg : Node->Args) {
+      Visit(Arg.get());
     }
-    void VisitRef(RefIRExpr *Node) {
-      Visit(Node->E.get());
+  }
+  void VisitIdent(IdentIRExpr *Node) {}
+  void VisitAccess(AccessIRExpr *Node) {}
+  void VisitIndex(IndexIRExpr *Node) { Visit(Node->Ind.get()); }
+  void VisitCast(CastIRExpr *Node) { Visit(Node->E.get()); }
+  void VisitDRef(DRefIRExpr *Node) { Visit(Node->Expr.get()); }
+  void VisitStmt(IRStmt *S) {
+    switch (S->getKind()) {
+    case IRStmt::STK_COPY: {
+      CopyIRStmt *CS = llvm::dyn_cast<CopyIRStmt>(S);
+      Visit(CS->Src.get());
+      return;
     }
-    void VisitLiteral(ASTLiteralIRExpr *Node) {}
-    void VisitIntLiteral(IntLiteralIRExpr *Node) {}
-    void VisitFIdent(FIdentIRExpr *Node) {}
-    void VisitISpawn(ISpawnIRExpr *Node) {
-      for (auto &Arg : Node->Args) {
+    case IRStmt::STK_ESPAWN: {
+      ESpawnIRStmt *ES = llvm::dyn_cast<ESpawnIRStmt>(S);
+      Visit(ES->Dest.get());
+      for (auto &Arg : ES->Args) {
         Visit(Arg.get());
       }
+      return;
     }
-    void VisitCall(CallIRExpr *Node) {
-      for (auto &Arg : Node->Args) {
-        Visit(Arg.get());
+    case IRStmt::STK_STORE: {
+      StoreIRStmt *SS = llvm::dyn_cast<StoreIRStmt>(S);
+      Visit(SS->Dest.get());
+      Visit(SS->Src.get());
+      return;
+    }
+    case IRStmt::STK_WRAP: {
+      ExprWrapIRStmt *EWS = llvm::dyn_cast<ExprWrapIRStmt>(S);
+      Visit(EWS->Expr.get());
+      return;
+    }
+    case IRStmt::STK_IF: {
+      IfIRStmt *IS = llvm::dyn_cast<IfIRStmt>(S);
+      Visit(IS->Cond.get());
+      return;
+    }
+    case IRStmt::STK_LOOP: {
+      LoopIRStmt *LS = llvm::dyn_cast<LoopIRStmt>(S);
+      Visit(LS->Cond.get());
+      return;
+    }
+    case IRStmt::STK_RETURN: {
+      ReturnIRStmt *RS = llvm::dyn_cast<ReturnIRStmt>(S);
+      if (RS->RetVal) {
+        Visit(RS->RetVal.get());
       }
+      return;
     }
-    void VisitIdent(IdentIRExpr *Node) {}
-    void VisitAccess(AccessIRExpr *Node) {}
-    void VisitIndex(IndexIRExpr *Node) {
-      Visit(Node->Ind.get());
+    case IRStmt::STK_SCOPE_ANNOT: {
+      ScopeAnnotIRStmt *SAS = llvm::dyn_cast<ScopeAnnotIRStmt>(S);
+      return;
     }
-    void VisitCast(CastIRExpr *Node) {
-      Visit(Node->E.get());
+    case IRStmt::STK_SYNC:
+    case IRStmt::STK_SPAWN_NEXT: {
+      return;
     }
-    void VisitDRef(DRefIRExpr *Node)  {
-      Visit(Node->Expr.get());
+    default:
+      PANIC("impossible stmt");
     }
-    void VisitStmt(IRStmt *S) {
-      switch (S->getKind()) {
-        case IRStmt::STK_COPY: {
-          CopyIRStmt *CS = llvm::dyn_cast<CopyIRStmt>(S);
-          Visit(CS->Src.get());
-          return;
-        }
-        case IRStmt::STK_ESPAWN: {
-          ESpawnIRStmt *ES = llvm::dyn_cast<ESpawnIRStmt>(S);
-          Visit(ES->Dest.get());
-          for (auto &Arg: ES->Args) {
-            Visit(Arg.get());
-          }
-          return;
-        }
-        case IRStmt::STK_STORE: {
-          StoreIRStmt *SS = llvm::dyn_cast<StoreIRStmt>(S);
-          Visit(SS->Dest.get());
-          Visit(SS->Src.get());
-          return;
-        }
-        case IRStmt::STK_WRAP: {
-          ExprWrapIRStmt *EWS = llvm::dyn_cast<ExprWrapIRStmt>(S);
-          Visit(EWS->Expr.get());
-          return;
-        }
-        case IRStmt::STK_IF: {
-          IfIRStmt *IS = llvm::dyn_cast<IfIRStmt>(S);
-          Visit(IS->Cond.get());
-          return;
-        }
-        case IRStmt::STK_LOOP: {
-          LoopIRStmt *LS = llvm::dyn_cast<LoopIRStmt>(S);
-          Visit(LS->Cond.get());
-          return;
-        }
-        case IRStmt::STK_RETURN: {
-          ReturnIRStmt *RS = llvm::dyn_cast<ReturnIRStmt>(S);
-          if (RS->RetVal) {
-            Visit(RS->RetVal.get());
-          }
-          return;
-        }
-        case IRStmt::STK_SCOPE_ANNOT: {
-          ScopeAnnotIRStmt *SAS = llvm::dyn_cast<ScopeAnnotIRStmt>(S);
-          return;
-        }
-        case IRStmt::STK_SYNC:
-        case IRStmt::STK_SPAWN_NEXT: {
-          return;
-        }
-        default: PANIC("impossible stmt");
-      }
-    }
-  };
+  }
+};
 
 class IRBasicBlock {
 private:
@@ -798,22 +811,23 @@ private:
   std::deque<IRStmtPtr> Stmts;
   IRFunction *Parent;
   unsigned Ind;
-  
-  public:
+
+public:
   llvm::SetVector<IRBasicBlock *> Succs;
-  IRTerminatorStmt* Term;
+  IRTerminatorStmt *Term;
 
   friend class IRFunction;
 
-  IRBasicBlock(unsigned Ind, IRFunction *Parent) : Ind(Ind), Parent(Parent), Term(nullptr) {}
+  IRBasicBlock(unsigned Ind, IRFunction *Parent)
+      : Ind(Ind), Parent(Parent), Term(nullptr) {}
   void iteratePreds(std::function<void(IRBasicBlock *B)> CB);
 
   void pushStmtBack(IRStmt *stmt) { Stmts.push_back(IRStmtPtr(stmt)); }
   void pushStmtFront(IRStmt *stmt) { Stmts.push_front(IRStmtPtr(stmt)); }
   // Clones contents of basic block. Does not clone successors.
   void clone(IRBasicBlock *Dest);
-  IRBasicBlock* splitAt(int Index);
-  IRStmt* getAt(int Index);
+  IRBasicBlock *splitAt(int Index);
+  IRStmt *getAt(int Index);
   void removeAt(int Index);
   void insertAt(int Index, IRStmt *S);
   size_t lenInsns() const;
@@ -854,9 +868,10 @@ public:
   struct IRFunctionInfo {
     bool IsTask = false;
     const FunctionDecl *RootFun = nullptr;
-    std::set<IRFunction*> SpawnList;
-    std::set<IRFunction*> SpawnNextList;
+    std::set<IRFunction *> SpawnList;
+    std::set<IRFunction *> SpawnNextList;
   };
+
 private:
   using IRBlockPtr = std::unique_ptr<IRBasicBlock>;
   IRProgram *Parent;
@@ -865,7 +880,7 @@ private:
   std::string Name;
   IRType Ret;
   std::list<IRBlockPtr> Blocks;
-  
+
 public:
   std::list<IRVarDecl> Vars;
   IRFunctionInfo Info;
@@ -873,7 +888,9 @@ public:
   friend class IRBasicBlock;
   friend class IRProgram;
 
-  IRFunction(unsigned Ind, const std::string &Name, IRType Ret, IRProgram *Parent) : Parent(Parent), Ind(Ind), Ret(Ret), Name(Name) {}
+  IRFunction(unsigned Ind, const std::string &Name, IRType Ret,
+             IRProgram *Parent)
+      : Parent(Parent), Ind(Ind), Ret(Ret), Name(Name) {}
   IRBasicBlock *createBlock();
 
   void printVars(llvm::raw_ostream &out) {
@@ -938,7 +955,7 @@ public:
   const_iterator end() const { return Funcs.end(); }
 };
 
-IRBasicBlock* FindJoin(IRBasicBlock* Left, IRBasicBlock *Right);
+IRBasicBlock *FindJoin(IRBasicBlock *Left, IRBasicBlock *Right);
 class ScopedIRTraverser {
 protected:
   enum ScopeEvent { None, Open, Close, Else };
@@ -1007,18 +1024,15 @@ public:
 
 class ExprIdentifierVisitor : public IRExprVisitor<ExprIdentifierVisitor> {
 public:
-  using IdCallbackType = std::function<void(IRVarRef&, bool)>;
+  using IdCallbackType = std::function<void(IRVarRef &, bool)>;
+
 private:
   IdCallbackType CB;
-public:
-  
-  ExprIdentifierVisitor(IRStmt *S, IdCallbackType CB) : CB(CB) {
-    VisitStmt(S);
-  }
 
-  ExprIdentifierVisitor(IRExpr *E, IdCallbackType CB) : CB(CB) {
-    Visit(E);
-  }
+public:
+  ExprIdentifierVisitor(IRStmt *S, IdCallbackType CB) : CB(CB) { VisitStmt(S); }
+
+  ExprIdentifierVisitor(IRExpr *E, IdCallbackType CB) : CB(CB) { Visit(E); }
 
   void VisitStmt(IRStmt *S) {
     if (auto CS = dyn_cast<CopyIRStmt>(S)) {
@@ -1027,13 +1041,9 @@ public:
     IRExprVisitor<ExprIdentifierVisitor>::VisitStmt(S);
   }
 
-  void VisitIdent(IdentIRExpr *Node) {
-    CB(Node->Ident, false);
-  }
+  void VisitIdent(IdentIRExpr *Node) { CB(Node->Ident, false); }
 
-  void VisitAccess(AccessIRExpr *Node) {
-    CB(Node->Struct, false);
-  }
+  void VisitAccess(AccessIRExpr *Node) { CB(Node->Struct, false); }
 
   void VisitIndex(IndexIRExpr *Node) {
     CB(Node->Arr, false);

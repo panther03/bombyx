@@ -101,33 +101,33 @@ private:
     }
   }
 
-  void analyzeStmt(IRStmt *S, std::set<IRVarRef> &free, std::set<IRVarRef> &refd) {
+  void analyzeStmt(IRStmt *S, std::set<IRVarRef> &free,
+                   std::set<IRVarRef> &refd) {
     std::set<IRVarRef> V;
-      ExprIdentifierVisitor _(S, [&](auto &VR,bool lhs) {
-        if (!lhs) {
-          V.insert(VR);
-        }
-      });
-      for (auto *D: V) {
-        if (refd.find(D) == refd.end()) {
-          free.insert(D);
-          refd.insert(D);
-        }
+    ExprIdentifierVisitor _(S, [&](auto &VR, bool lhs) {
+      if (!lhs) {
+        V.insert(VR);
       }
+    });
+    for (auto *D : V) {
+      if (refd.find(D) == refd.end()) {
+        free.insert(D);
+        refd.insert(D);
+      }
+    }
 
-      if (auto *CS = dyn_cast<CopyIRStmt>(S)) {
-        if (refd.find(CS->Dest) == refd.end()) {
-          refd.insert(CS->Dest);
-          free.erase(CS->Dest);
-        }
+    if (auto *CS = dyn_cast<CopyIRStmt>(S)) {
+      if (refd.find(CS->Dest) == refd.end()) {
+        refd.insert(CS->Dest);
+        free.erase(CS->Dest);
+      }
     }
   }
 
   // TODO: this function is not going to handle more complex cases like
   // a store being present in only one branch and a load at the join
   // (so the value is free for the whole function)
-  void analyzePath(ContFun &CF,
-                   SetVector<IRBasicBlock *> &path,
+  void analyzePath(ContFun &CF, SetVector<IRBasicBlock *> &path,
                    std::set<IRVarRef> *inFrees) {
     std::set<IRVarRef> &free = CF.Args;
     std::set<IRVarRef> &refd = CF.Locals;
@@ -184,11 +184,10 @@ public:
 
     for (int p = 0; p < Paths.size() - 1; p++) {
       std::string CfName = F.getName() + "_cont" + std::to_string(p);
-      ContFun CF = ContFun {
-        .F = F.getParent()->createFunc(CfName, F.getReturnType()),
-        .Args = std::set<IRVarRef>(),
-        .Locals = std::set<IRVarRef>()
-      };
+      ContFun CF =
+          ContFun{.F = F.getParent()->createFunc(CfName, F.getReturnType()),
+                  .Args = std::set<IRVarRef>(),
+                  .Locals = std::set<IRVarRef>()};
       CF.F->Info.IsTask = true;
       ContFuns.push_back(CF);
     }
@@ -216,8 +215,7 @@ public:
         }
       }
 
-      analyzePath(ContFuns[path],
-                  Paths[path + 1], inFrees);
+      analyzePath(ContFuns[path], Paths[path + 1], inFrees);
       visited[path] = true;
 
       auto *startBb = Paths[path + 1][0];
@@ -230,21 +228,21 @@ public:
       auto &Path = Paths[p];
       std::unordered_map<IRVarRef, IRVarRef> Remap;
 
-      if (p > 0) { 
-        auto &CF = ContFuns[p-1];
-        for (auto *Arg: CF.Args) {
-          CF.F->Vars.push_back(IRVarDecl {
-            .Type = Arg->Type,
-            .Name = Arg->Name,
-            .DeclLoc = IRVarDecl::ARG,
+      if (p > 0) {
+        auto &CF = ContFuns[p - 1];
+        for (auto *Arg : CF.Args) {
+          CF.F->Vars.push_back(IRVarDecl{
+              .Type = Arg->Type,
+              .Name = Arg->Name,
+              .DeclLoc = IRVarDecl::ARG,
           });
           Remap[Arg] = &(CF.F->Vars.back());
         }
-        for (auto *Local: CF.Locals) {
-          CF.F->Vars.push_back(IRVarDecl {
-            .Type = Local->Type,
-            .Name = Local->Name,
-            .DeclLoc = IRVarDecl::LOCAL,
+        for (auto *Local : CF.Locals) {
+          CF.F->Vars.push_back(IRVarDecl{
+              .Type = Local->Type,
+              .Name = Local->Name,
+              .DeclLoc = IRVarDecl::LOCAL,
           });
           Remap[Local] = &(CF.F->Vars.back());
         }
@@ -266,11 +264,11 @@ public:
         }
         if (p > 0) {
           B->getParent()->moveBlock(B, ContFuns[p - 1].F);
-          auto RemapCB = [&](auto &VR, bool lhs){
+          auto RemapCB = [&](auto &VR, bool lhs) {
             assert(Remap.find(VR) != Remap.end());
             VR = Remap[VR];
           };
-          for (auto &S: *B) {
+          for (auto &S : *B) {
             ExprIdentifierVisitor e(S.get(), RemapCB);
           }
           if (B->Term) {
@@ -288,13 +286,13 @@ public:
     INFO {
       outs() << F.getName() << ":\n";
       F.printVars(outs());
-  
+
       int I = 0;
       for (auto &CF : ContFuns) {
         outs() << "ContF" << CF.F->getInd() << ":\n";
         CF.F->printVars(outs());
         I++;
-      } 
+      }
     }
   }
 };
@@ -304,40 +302,40 @@ public:
 ////////////////////////
 
 struct FinalizeExplicitCPS {
-  std::vector<std::pair<IRBasicBlock*, IRStmt*>> ClosureDeclWorkList;
+  std::vector<std::pair<IRBasicBlock *, IRStmt *>> ClosureDeclWorkList;
 
   class ScopeStartMapper : public ScopedIRTraverser {
-    private:
-      std::unordered_map<IRBasicBlock *, IRBasicBlock *> &ScopeStarts;
-      std::vector<IRBasicBlock *> ScopeStack;
-      bool pushNext = false;
-    
-      void handleScope(ScopeEvent SE) override {
-        if (SE == ScopeEvent::Open || SE == ScopeEvent::Else) {
-          pushNext = true;
-        }
-        if (SE == ScopeEvent::Close || SE == ScopeEvent::Else) {
-          ScopeStack.pop_back();
-        }
+  private:
+    std::unordered_map<IRBasicBlock *, IRBasicBlock *> &ScopeStarts;
+    std::vector<IRBasicBlock *> ScopeStack;
+    bool pushNext = false;
+
+    void handleScope(ScopeEvent SE) override {
+      if (SE == ScopeEvent::Open || SE == ScopeEvent::Else) {
+        pushNext = true;
       }
-    
-      void visitBlock(IRBasicBlock *B) override {
-        if (pushNext) {
-          ScopeStack.push_back(B);
-          pushNext = false;
-        }
-        ScopeStarts[B] = ScopeStack.back();
+      if (SE == ScopeEvent::Close || SE == ScopeEvent::Else) {
+        ScopeStack.pop_back();
       }
-    
-    public:
-      ScopeStartMapper(
-          std::unordered_map<IRBasicBlock *, IRBasicBlock *> &ScopeStarts)
-          : ScopeStarts(ScopeStarts) {}
-    
-      void reset(IRBasicBlock *Entry) {
-        ScopeStack.clear();
-        ScopeStack.push_back(Entry);
+    }
+
+    void visitBlock(IRBasicBlock *B) override {
+      if (pushNext) {
+        ScopeStack.push_back(B);
+        pushNext = false;
       }
+      ScopeStarts[B] = ScopeStack.back();
+    }
+
+  public:
+    ScopeStartMapper(
+        std::unordered_map<IRBasicBlock *, IRBasicBlock *> &ScopeStarts)
+        : ScopeStarts(ScopeStarts) {}
+
+    void reset(IRBasicBlock *Entry) {
+      ScopeStack.clear();
+      ScopeStack.push_back(Entry);
+    }
   };
 
   void PlaceClosureDecl(IRBasicBlock *StartB, IRStmt *CDS) {
@@ -355,26 +353,27 @@ struct FinalizeExplicitCPS {
       StartB = StartB->Succs[0];
     } while (true);
 
-    found_decl_loc:
+  found_decl_loc:
     StartB->insertAt(std::min(ind, StartB->lenInsns()), CDS);
   }
 
   void CreateClosureDecls(
-    IRFunction *F,
-    std::unordered_map<IRBasicBlock *, IRBasicBlock *> &ScopeStarts) {
+      IRFunction *F,
+      std::unordered_map<IRBasicBlock *, IRBasicBlock *> &ScopeStarts) {
     for (auto &B : *F) {
       if (B->Term) {
         if (auto *SNTerm = dyn_cast<SpawnNextIRStmt>(B->Term)) {
           auto *StartB = ScopeStarts[B.get()];
           assert(StartB);
-    
+
           auto *DeclS = new ClosureDeclIRStmt(SNTerm->Fn);
           SNTerm->Decl = DeclS;
-          for (auto &DestVar: SNTerm->Fn->Vars) {
+          for (auto &DestVar : SNTerm->Fn->Vars) {
             if (DestVar.DeclLoc == IRVarDecl::ARG) {
               // find the same variable in this function's list
-              for (auto &SrcVar: F->Vars) {
-                if (SrcVar.Name == DestVar.Name && SrcVar.Type == DestVar.Type) {
+              for (auto &SrcVar : F->Vars) {
+                if (SrcVar.Name == DestVar.Name &&
+                    SrcVar.Type == DestVar.Type) {
                   DeclS->addCallerToCaleeVarMapping(&SrcVar, &DestVar);
                 }
               }
@@ -418,8 +417,8 @@ struct FinalizeExplicitCPS {
   }
 
   void MakeSpawnsExplicit(IRFunction *F) {
-    for (auto &B: *F) {
-      for (auto &S: *B) {
+    for (auto &B : *F) {
+      for (auto &S : *B) {
         // TODO handle void spawn
         IRLvalExpr *Dest = nullptr;
         ISpawnIRExpr *IS = nullptr;
@@ -445,10 +444,10 @@ struct FinalizeExplicitCPS {
           SpawnNextIRStmt *SN = DFSTillSpawnNext(B.get());
           if (!SN) {
             PANIC("Spawn has a return value, but no corresponding spawn "
-              "next..");
+                  "next..");
           }
 
-          std::vector<IRExpr*> Args;
+          std::vector<IRExpr *> Args;
           for (auto &Arg : IS->Args) {
             Args.push_back(Arg.get());
             Arg.release();
@@ -458,11 +457,11 @@ struct FinalizeExplicitCPS {
           if (auto SFn = std::get_if<IRFunction *>(&IS->Fn)) {
             Fn = *SFn;
           } else {
-            PANIC("Implicit spawn destination still unknown, needs to be known for explicit conversion");
+            PANIC("Implicit spawn destination still unknown, needs to be known "
+                  "for explicit conversion");
           }
 
           delete IS;
-
 
           S = std::make_unique<ESpawnIRStmt>(Dest, Fn, SN, Args, Local);
           F->Info.SpawnList.insert(Fn);
@@ -492,11 +491,11 @@ void MakeExplicit(IRProgram &P) {
 
   for (auto &F : WorkList) {
     CreateContinuationFuns CCF(*F);
-    std::vector<IRFunction*> FWorkList{F};
+    std::vector<IRFunction *> FWorkList{F};
     for (auto &CF : CCF.ContFuns) {
       FWorkList.push_back(CF.F);
     }
-    for (auto *F: FWorkList) {
+    for (auto *F : FWorkList) {
       FinalizeExplicitCPS FC(F);
     }
   }
