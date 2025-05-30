@@ -567,7 +567,7 @@ public:
     }
 
     if (Decl->getBody()) {
-      IRFunction *F = P.createFunc(Decl->getName().str());
+      IRFunction *F = P.createFunc(Decl->getName().str(), Decl->getDeclaredReturnType());
       F->Info.RootFun = Decl;
       std::unordered_map<ASTVarRef, IRVarRef> VarLookup;
       for (auto *Param : Decl->parameters()) {

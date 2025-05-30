@@ -862,10 +862,10 @@ private:
   IRProgram *Parent;
   unsigned Ind;
 
-  IRType Ret;
   std::string Name;
+  IRType Ret;
   std::list<IRBlockPtr> Blocks;
-
+  
 public:
   std::list<IRVarDecl> Vars;
   IRFunctionInfo Info;
@@ -873,7 +873,7 @@ public:
   friend class IRBasicBlock;
   friend class IRProgram;
 
-  IRFunction(unsigned Ind, const std::string &Name, IRProgram *Parent) : Parent(Parent), Ind(Ind), Name(Name) {}
+  IRFunction(unsigned Ind, const std::string &Name, IRType Ret, IRProgram *Parent) : Parent(Parent), Ind(Ind), Ret(Ret), Name(Name) {}
   IRBasicBlock *createBlock();
 
   void printVars(llvm::raw_ostream &out) {
@@ -910,6 +910,7 @@ public:
   IRProgram *getParent() const { return Parent; }
   unsigned getInd() const { return Ind; }
   const std::string &getName() const { return Name; }
+  const IRType &getReturnType() const { return Ret; }
 };
 
 class IRProgram {
@@ -918,11 +919,8 @@ private:
   std::vector<IRFuncPtr> Funcs;
 
 public:
-  std::unordered_map<const Stmt *, IRBasicBlock *> Ast2IrDestination;
-  std::unordered_map<std::string, IRFunction *> RootFunLookup;
-
   IRProgram() {}
-  IRFunction *createFunc(const std::string &Name);
+  IRFunction *createFunc(const std::string &Name, IRType Ret);
 
   void print(llvm::raw_ostream &out, clang::ASTContext &Context);
   void dumpGraph(llvm::raw_ostream &out, clang::ASTContext &Context);

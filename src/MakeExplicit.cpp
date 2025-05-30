@@ -185,7 +185,7 @@ public:
     for (int p = 0; p < Paths.size() - 1; p++) {
       std::string CfName = F.getName() + "_cont" + std::to_string(p);
       ContFun CF = ContFun {
-        .F = F.getParent()->createFunc(CfName),
+        .F = F.getParent()->createFunc(CfName, F.getReturnType()),
         .Args = std::set<IRVarRef>(),
         .Locals = std::set<IRVarRef>()
       };

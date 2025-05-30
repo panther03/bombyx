@@ -661,8 +661,8 @@ void IRFunction::dumpArgs(llvm::raw_ostream &out) {
 // IRPRogram //
 //////////////
 
-IRFunction *IRProgram::createFunc(const std::string &Name) {
-  IRFuncPtr F = std::make_unique<IRFunction>(Funcs.size(), Name, this);
+IRFunction *IRProgram::createFunc(const std::string &Name, IRType Ret) {
+  IRFuncPtr F = std::make_unique<IRFunction>(Funcs.size(), Name, Ret, this);
   IRFunction *Fp = F.get();
   Funcs.push_back(std::move(F));
   return Fp;

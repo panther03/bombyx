@@ -14,13 +14,13 @@ void DAEAtInd(IRProgram &P, IRBasicBlock *B, int Ind) {
     B->Succs.clear();
     B->Succs.insert(RB);
     
-    IRFunction *LoadF = P.createFunc(B->getParent()->getName() + "_dae_" + std::to_string(DaeCount++));
-    LoadF->Info.IsTask = true;
-    
     auto *AccessStmt = dyn_cast<CopyIRStmt>(B->getAt(Ind-2));
     if (!AccessStmt) {
         PANIC("DAE annotation should be proceeded by a copy IR statement (decouplable access)");
     }
+
+    IRFunction *LoadF = P.createFunc(B->getParent()->getName() + "_dae_" + std::to_string(DaeCount++), AccessStmt->Dest->Type);
+    LoadF->Info.IsTask = true;
 
     std::unordered_map<IRVarRef, IRVarRef> Remap;
     std::vector<IRExpr*> CallInArgs;

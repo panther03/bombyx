@@ -273,7 +273,6 @@ private:
     // we expect them to be in argument first order
     //assert(ES->Fn->Info.RootFun);
     auto DstArgIt = ES->Fn->Vars.begin();
-    // TODO: this doesnt seem to be working with DAE
     for (auto &Arg: ES->Args) {
       auto &DstArg = *DstArgIt;
       assert(DstArg.DeclLoc == IRVarDecl::ARG);

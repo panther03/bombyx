@@ -9,6 +9,7 @@
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Tooling/Tooling.h>
 #include <iostream>
+#include <filesystem>
 #include "clang/Basic/DiagnosticIDs.h"
 #include "clang/Basic/TokenKinds.h"
 #include "llvm/Support/raw_ostream.h"
@@ -36,6 +37,7 @@ struct ConvertOpts {
     TG_CILK1EMU,
     TG_HARDCILK
   } Target = TG_CILK1EMU;
+  bool HCGenDriver = false;
 };
 
 ConvertOpts GOpts;
@@ -81,10 +83,27 @@ public:
             break;
           };
           case ConvertOpts::TG_HARDCILK: {
-            std::string TaskJsonName = OutFilename.str() + "_task.json";
-            llvm::raw_fd_ostream TaskJson(TaskJsonName, EC, llvm::sys::fs::OF_Text);
-            HardCilkTarget HT(P);
-            HT.PrintTaskJson(TaskJson);
+            std::filesystem::path OutPath(OutFilename.str());
+            std::filesystem::create_directories(OutPath);
+            std::string AppName = OutPath.stem().string();
+            HardCilkTarget HT(P, AppName);
+            std::string DescJsonName = OutFilename.str() + "/" + AppName + "_descriptors.json";
+            llvm::raw_fd_ostream DescJson(DescJsonName, EC, llvm::sys::fs::OF_Text);
+            HT.PrintDescJson(DescJson);
+
+            std::string HLSCodeName = OutFilename.str() + "/" + AppName + ".cpp";
+            llvm::raw_fd_ostream HLSCode(HLSCodeName, EC, llvm::sys::fs::OF_Text);
+            HT.PrintHardCilk(HLSCode, Context);
+
+            std::string DefsName = OutFilename.str() + "/" + AppName + "_defs.h";
+            llvm::raw_fd_ostream Defs(DefsName, EC, llvm::sys::fs::OF_Text);
+            HT.PrintDefs(Defs);
+
+            if (GOpts.HCGenDriver) {
+              std::string DriverName = OutFilename.str() + "/" + AppName + "_driver.cpp";
+              llvm::raw_fd_ostream Driver(DefsName, EC, llvm::sys::fs::OF_Text);
+              HT.PrintDriver(Driver);
+            }
             break;
           }
         }
@@ -203,6 +222,7 @@ int main(int argc, char *argv[]) {
 
   static struct option long_options[] = {
     {"fdump-dot", required_argument, 0, 0 },
+    {"fgen-driver", no_argument, 0, 0 },
     {"target", required_argument, 0, 0 },
   };
   int option_index = -1;
@@ -225,7 +245,12 @@ int main(int argc, char *argv[]) {
           break;
         }
         case 1: {
+          GOpts.HCGenDriver = true;
+          break;
+        }
+        case 2: {
           set_target(optarg);
+          break;
         }
       }
       break;
@@ -240,10 +265,12 @@ int main(int argc, char *argv[]) {
       break;
     default: /* '?' */
       fprintf(stderr, 
-        "Usage: %s [OPTION]... INFILE OUTFILE\n"
+        "Usage: %s [OPTION]... INFILE OUTNAME\n"
+        "OUTNAME can be a file or folder depending on TARGET.\n"
         "   -v                      \t verbose\n"
         "   -V                      \t very verbose\n"
         "       --fdump-dot=<PASSES>\t Indices of passes to dump GraphViz output after, comma separated\n"
+        "       --fgen-driver       \t (HardCilk only) generate driver code"
         "   -t, --target=<TARGET>\t Output backend. Use TARGET=help to print available\n",
               argv[0]);
       exit(EXIT_FAILURE);
