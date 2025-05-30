@@ -3,14 +3,12 @@
 
 int fib(int n) {
     if (n < 2) {
-        return (n);
-    } else {
-        int x = 0;
-        int f1 = cilk_spawn fib(n-1);
-        int f2 = cilk_spawn fib(n-2);
-        cilk_sync;
-        return (f1 + f2);
+        return n;
     }
+    int f1 = cilk_spawn fib(n-1);
+    int f2 = cilk_spawn fib(n-2);
+    cilk_sync;
+    return (f1 + f2);
 }
 
 int main() {

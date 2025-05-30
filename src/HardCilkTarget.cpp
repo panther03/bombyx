@@ -1,7 +1,9 @@
 #include "HardCilkTarget.hpp"
 #include "IR.hpp"
 #include "clang/AST/Type.h"
+#include "llvm/Support/Alignment.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <llvm/Support/JSON.h>
@@ -271,7 +273,7 @@ class HardCilkPrinter : public ScopedIRTraverser {
 private:
   llvm::raw_ostream &Out;
   IRPrintContext &C;
-  HCTaskInfo &Info;
+  TaskInfosTy const& TaskInfos;
   int SpawnCtr = 0;
   int IndentLvl = 1;
 
@@ -309,12 +311,13 @@ private:
   void handleSpawnNextDecl(ClosureDeclIRStmt *DS, IRFunction *F) {
     const std::string &SpawnNextFnName = DS->Fn->getName();
     const std::string SpawnNextClsName = "SN_" + SpawnNextFnName + "c";
-    Indent() << SpawnNextFnName << "_task " << SpawnNextClsName << ";\n";
-    Indent() << SpawnNextClsName << "._cont = args.cont;\n";
-    Indent() << SpawnNextClsName << "._counter = ";
+    Indent() << "uint32_t " << SpawnNextClsName << "_cnt = ";
     assert(DS->SpawnCount);
     DS->SpawnCount->print(Out, C);
     Out << ";\n";
+    Indent() << SpawnNextFnName << "_task " << SpawnNextClsName << ";\n";
+    Indent() << SpawnNextClsName << "._cont = args.cont;\n";
+    Indent() << SpawnNextClsName << "._counter = " << SpawnNextClsName << "_cnt;\n";
     Indent() << "addr_t " << SpawnNextClsName << "_k = closureIn.read();\n\n";
   }
 
@@ -324,8 +327,13 @@ private:
     Indent() << SpawnNextFnName << "_spawn_next " << SpawnNextName << ";\n";
     Indent() << SpawnNextName << ".addr = SN_" << SpawnNextFnName << "c_k;\n";
     Indent() << SpawnNextName << ".data = SN_" << SpawnNextFnName << "c;\n";
-    Indent() << SpawnNextName << ".size = ?;\n";
-    Indent() << SpawnNextName << ".allow = ?;\n";
+    auto SnInfoIt = TaskInfos.find(S->Fn);
+    assert(SnInfoIt != TaskInfos.end());
+    auto &SnInfo = SnInfoIt->second;
+    size_t SnTaskSize = llvm::Log2_32_Ceil(SnInfo.TaskSize);
+    Indent() << SpawnNextName << ".size = " << SnTaskSize << ";\n";
+    // TODO: is that what allow should be?
+    Indent() << SpawnNextName << ".allow = SN_" << SpawnNextFnName << "c_cnt;\n"; 
     Indent() << "spawnNext.write(" << SpawnNextName << ");\n\n";
   }
 
@@ -366,14 +374,15 @@ private:
   void handleSendArg(ReturnIRStmt *RS, IRFunction *F) {
     static int RvCnt = 0;
     Indent() << "argOut.write(args._cont);\n";
-    const char *RetTypeStr =
-        printHardCilkType(clangTypeToHardCilk(F->getReturnType()));
+    HardCilkType RetType = clangTypeToHardCilk(F->getReturnType());
+    const char *RetTypeStr = printHardCilkType(RetType);
     Indent() << RetTypeStr << "_arg_out a" << RvCnt << ";\n";
     Indent() << "a" << RvCnt << ".addr = args._cont;\n";
     Indent() << "a" << RvCnt << ".data = ";
     RS->RetVal->print(Out, C);
     Out << ";\n";
-    Indent() << "a" << RvCnt << ".size = sizeof(" << RetTypeStr << ");\n";
+    size_t RetTypeSz = llvm::Log2_32_Ceil(hardCilkTypeSize(RetType));
+    Indent() << "a" << RvCnt << ".size = " << RetTypeSz << ";\n";
     Indent() << "a" << RvCnt << ".allow = 1;\n";
     Indent() << "argDataOut.write(a" << RvCnt << ");\n";
     RvCnt++;
@@ -412,12 +421,12 @@ private:
   }
 
 public:
-  HardCilkPrinter(llvm::raw_ostream &Out, IRPrintContext &C, HCTaskInfo &Info)
-      : Out(Out), C(C), Info(Info) {}
+  HardCilkPrinter(llvm::raw_ostream &Out, IRPrintContext &C, TaskInfosTy const& TaskInfos)
+      : Out(Out), C(C), TaskInfos(TaskInfos) {}
 };
 
 void PrintHardCilkTask(llvm::raw_ostream &Out, clang::ASTContext &C,
-                       IRFunction *Task, HCTaskInfo &Info) {
+                      HardCilkPrinter &Printer, IRFunction *Task, HCTaskInfo &Info) {
   std::vector<std::pair<std::string, std::string>> intfs;
   Out << "void " << Task->getName() << " (\n";
   intfs.push_back(std::make_pair("taskIn", Task->getName() + "_task"));
@@ -450,31 +459,19 @@ void PrintHardCilkTask(llvm::raw_ostream &Out, clang::ASTContext &C,
   for (auto &[intfName, _] : intfs) {
     Out << "#pragma HLS INTERFACE mode = axis port = " << intfName << "\n";
   }
+  Out << "\n";
+
+  for (auto &Local : Task->Vars) {
+    if (Local.DeclLoc == IRVarDecl::LOCAL) {
+      Out << TAB;
+      Out << printHardCilkType(clangTypeToHardCilk(Local.Type));
+      Out << " " << GetSym(Local.Name) << ";\n";
+    }
+  }
 
   Out << "  " << intfs[0].second << " args = taskIn.read();\n\n";
-
-  IRPrintContext IRC = IRPrintContext{
-      .ASTCtx = C,
-      .NewlineSymbol = "\n",
-      .IdentCB =
-          [&](llvm::raw_ostream &Out, IRVarRef VR) {
-            switch (VR->DeclLoc) {
-            case IRVarDecl::ARG: {
-              Out << "args." << GetSym(VR->Name);
-              break;
-            }
-            case IRVarDecl::LOCAL: {
-              Out << GetSym(VR->Name);
-              break;
-            }
-            default:
-              PANIC("unsupported");
-            }
-          },
-  };
-  HardCilkPrinter Printer(Out, IRC, Info);
   Printer.traverse(*Task);
-  Out << "\n}\n";
+  Out << "}\n\n";
 }
 
 void HardCilkTarget::PrintHardCilk(llvm::raw_ostream &Out,
@@ -482,8 +479,28 @@ void HardCilkTarget::PrintHardCilk(llvm::raw_ostream &Out,
   Out << "#include \"hls_stream.h\"\n";
   Out << "#include \"" << AppName << "_defs.h\"\n\n";
 
+  IRPrintContext IRC = IRPrintContext{
+    .ASTCtx = C,
+    .NewlineSymbol = "\n",
+    .IdentCB =
+        [&](llvm::raw_ostream &Out, IRVarRef VR) {
+          switch (VR->DeclLoc) {
+          case IRVarDecl::ARG: {
+            Out << "args." << GetSym(VR->Name);
+            break;
+          }
+          case IRVarDecl::LOCAL: {
+            Out << GetSym(VR->Name);
+            break;
+          }
+          default:
+            PANIC("unsupported");
+          }
+        },
+};
+  HardCilkPrinter Printer(Out, IRC, TaskInfos);
   for (auto &[T, Info] : TaskInfos) {
-    PrintHardCilkTask(Out, C, T, Info);
+    PrintHardCilkTask(Out, C, Printer, T, Info);
   }
 }
 

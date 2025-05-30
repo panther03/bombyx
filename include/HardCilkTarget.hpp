@@ -22,11 +22,13 @@ struct HCTaskInfo {
   HCTaskInfo() {}
 };
 
+using TaskInfosTy = std::unordered_map<IRFunction *, HCTaskInfo>;
+
 class HardCilkTarget {
 private:
   IRProgram &P;
   const std::string &AppName;
-  std::unordered_map<IRFunction *, HCTaskInfo> TaskInfos;
+  TaskInfosTy TaskInfos;
   bool ArgOutImplList[TY_LAST] = {false};
 
   void analyzeSendArguments();

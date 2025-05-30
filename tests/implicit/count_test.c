@@ -7,7 +7,7 @@ int nonsense(int n) {
     int m;
     for (int i = 0; i < n; i += 1) {
         for (int j = 0; j < m; j += 1) {
-            y[i] = cilk_spawn nonsense(i);
+            m = cilk_spawn nonsense(i);
         }
     }
     cilk_sync;
