@@ -150,18 +150,19 @@ HardCilkTarget::HardCilkTarget(IRProgram &P, const std::string &AppName)
         Info.TaskSize += hardCilkTypeSize(clangTypeToHardCilk(Var.Type));
       }
     }
+    Info.TaskPadding = PADDING(Info.TaskSize, 32);
     Info.RetTy = clangTypeToHardCilk(T->getReturnType());
   }
   analyzeSendArguments();
 }
 
-llvm::json::Object getSchedulerSide() {
+llvm::json::Object getSchedulerSide(HCTaskInfo &TaskInfo) {
   llvm::json::Object obj;
   obj["sideType"] = "scheduler";
   obj["numVirtualServers"] = 1;
   obj["capacityVirtualQueue"] = 4096;
   obj["capacityPhysicalQueue"] = 64;
-  obj["portWidth"] = 256;
+  obj["portWidth"] = (TaskInfo.TaskSize + TaskInfo.TaskPadding) * 8;
   return obj;
 }
 
@@ -192,10 +193,10 @@ llvm::json::Object printTaskDescriptor(IRFunction *Task, HCTaskInfo &TaskInfo) {
   obj["isRoot"] = TaskInfo.IsRoot;
   obj["isCont"] = TaskInfo.IsCont;
   obj["dynamicMemAlloc"] = false;
-  obj["widthTask"] = 256; // TODO
+  obj["widthTask"] = (TaskInfo.TaskPadding + TaskInfo.TaskSize * 8); // closure size in bits
   obj["widthMalloc"] = 0;
   obj["variableSpawn"] = false;
-  std::vector<llvm::json::Value> sidesConfigs{getSchedulerSide()};
+  std::vector<llvm::json::Value> sidesConfigs{getSchedulerSide(TaskInfo)};
   if (TaskInfo.IsCont) {
     sidesConfigs.push_back(getArgumentNotifierSide());
     sidesConfigs.push_back(getAllocatorSide());
@@ -506,7 +507,7 @@ void HardCilkTarget::PrintHardCilk(llvm::raw_ostream &Out,
 
 void HardCilkTarget::PrintDef(llvm::raw_ostream &Out, IRFunction *Task,
                               HCTaskInfo &Info) {
-  Out << "struct " << Task->getName() << "_task_inner {\n";
+  Out << "struct " << Task->getName() << "_task {\n";
   Out << "  addr_t _cont;\n";
   if (Info.IsCont) {
     Out << "  uint32_t _counter;\n";
@@ -518,23 +519,18 @@ void HardCilkTarget::PrintDef(llvm::raw_ostream &Out, IRFunction *Task,
           << ";\n";
     }
   }
-  Out << "};\n\n";
-
-  Out << "struct " << Task->getName() << "_task {\n";
-  Out << "  " << Task->getName() << "_task_inner inner;\n";
-  size_t Padding = PADDING(Info.TaskSize, 32);
-  if (Padding > 0) {
-    Out << "  uint8_t _padding[" << Padding << "];\n";
+  if (Info.TaskPadding > 0) {
+    Out << "  uint8_t _padding[" << Info.TaskPadding << "];\n";
   }
   Out << "};\n\n";
 
   if (Info.IsCont) {
-    size_t SnSize = Info.TaskSize + hardCilkTypeSize(TY_ADDR) +
+    size_t SnSize = Info.TaskSize + Info.TaskPadding + hardCilkTypeSize(TY_ADDR) +
                     hardCilkTypeSize(TY_UINT32) * 2;
     size_t SnPadding = PADDING(SnSize, 32);
     Out << "struct " << Task->getName() << "_spawn_next {\n";
     Out << "  addr_t addr;\n";
-    Out << "  " << Task->getName() << "_task_inner data;\n";
+    Out << "  " << Task->getName() << "_task data;\n";
     Out << "  uint32_t size;\n";
     Out << "  uint32_t allow;\n";
     if (SnPadding > 0) {
@@ -570,4 +566,24 @@ void HardCilkTarget::PrintDefs(llvm::raw_ostream &Out) {
   }
 }
 
-void HardCilkTarget::PrintDriver(llvm::raw_ostream &Out) {}
+void HardCilkTarget::PrintDriver(llvm::raw_ostream &Out) {
+  IRFunction *DF = nullptr;
+  IRFunction *DFC = nullptr;
+  for (auto &F: P) {
+    if (F->getName() == "bombyx_driver") {
+      DF = F.get();
+      if (DF->Info.SpawnNextList.size() != 1) {
+        PANIC("Driver should have exactly one continuation.");
+      }
+      DFC = *DF->Info.SpawnNextList.begin();
+      if (!DFC->Info.SpawnNextList.empty() || !DFC->Info.SpawnList.empty()) {
+        PANIC("Driver continuation should not have continuations, or spawn anything");
+      }
+    }
+  }
+  if (!DF || !DFC) {
+    PANIC("To print driver code, please include a function named bombyx_driver with exactly one cilk_sync.");
+  }
+  assert(DF->Info.SpawnList.size() == 1 && "unimplemented: handle multiple spawn types in driver");
+  
+}

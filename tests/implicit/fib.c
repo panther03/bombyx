@@ -11,7 +11,7 @@ int fib(int n) {
     return (f1 + f2);
 }
 
-int main() {
+void bombyx_driver() {
     int n = cilk_spawn fib(6);
     cilk_sync;
     printf("fib = %d\n", n);

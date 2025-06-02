@@ -18,6 +18,7 @@ struct HCTaskInfo {
   bool IsRoot = false;
   bool IsCont = false;
   size_t TaskSize;
+  size_t TaskPadding;
   HardCilkType RetTy;
   HCTaskInfo() {}
 };
