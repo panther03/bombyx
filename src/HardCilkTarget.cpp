@@ -35,6 +35,8 @@ HardCilkType clangTypeToHardCilk(IRType &Ty) {
       return TY_UINT64;
     case clang::BuiltinType::ULongLong:
       return TY_UINT64;
+    case clang::BuiltinType::Void:
+      return TY_VOID;
     default: {
       PANIC("Unrecognized builtin type kind %d\n", BTy->getKind());
     }
@@ -93,6 +95,7 @@ void HardCilkTarget::analyzeSendArguments() {
           // 1. A function F spawned with the continuation pointing at the
           // closure of a function G has G in its send argument list.
           if (auto *ES = dyn_cast<ESpawnIRStmt>(S.get())) {
+            if (!ES->SN) continue;
             assert(TaskInfos.find(ES->Fn) != TaskInfos.end());
             assert(TaskInfos.find(ES->SN->Fn) != TaskInfos.end());
             auto &ESFInfo = TaskInfos[ES->Fn];
@@ -317,7 +320,7 @@ private:
     DS->SpawnCount->print(Out, C);
     Out << ";\n";
     Indent() << SpawnNextFnName << "_task " << SpawnNextClsName << ";\n";
-    Indent() << SpawnNextClsName << "._cont = args.cont;\n";
+    Indent() << SpawnNextClsName << "._cont = args._cont;\n";
     Indent() << SpawnNextClsName << "._counter = " << SpawnNextClsName << "_cnt;\n";
     Indent() << "addr_t " << SpawnNextClsName << "_k = closureIn.read();\n\n";
   }
@@ -342,16 +345,24 @@ private:
     const std::string &SpawnFnName = ES->Fn->getName();
     const std::string SpawnFnArgsName =
         (SpawnFnName + "_args") + std::to_string(SpawnCtr);
-    const std::string &SpawnNextFnName = ES->SN->Fn->getName();
-    const std::string SpawnNextContName = "SN_" + SpawnNextFnName + "c_k";
-    Indent() << SpawnFnName << "_task " << SpawnFnArgsName << ";\n";
-    assert(ES->Local);
-    auto *IdentDest = dyn_cast<IdentIRExpr>(ES->Dest.get());
-    assert(IdentDest);
-    Indent() << SpawnFnArgsName << "._cont = " << SpawnNextContName
-             << " + offsetof(";
-    Out << SpawnNextFnName << "_task, " << GetSym(IdentDest->Ident->Name)
-        << ");\n";
+        Indent() << SpawnFnName << "_task " << SpawnFnArgsName << ";\n";
+    if (ES->SN) {
+      const std::string &SpawnNextFnName = ES->SN->Fn->getName();
+      const std::string SpawnNextContName = "SN_" + SpawnNextFnName + "c_k";
+      if (ES->Dest) {
+        assert(ES->Local);
+        auto *IdentDest = dyn_cast<IdentIRExpr>(ES->Dest.get());
+        assert(IdentDest);
+        Indent() << SpawnFnArgsName << "._cont = " << SpawnNextContName
+                << " + offsetof(";
+        Out << SpawnNextFnName << "_task, " << GetSym(IdentDest->Ident->Name)
+            << ");\n";
+      } else {
+        Indent() << SpawnFnArgsName << "._cont = " << SpawnNextContName << ";\n";
+      }
+    } else {
+      // TODO: is it ok for the task to not notify anything?
+    }
 
     // we expect the functions to be in argument first order
     auto DstArgIt = ES->Fn->Vars.begin();
@@ -373,6 +384,9 @@ private:
   }
 
   void handleSendArg(ReturnIRStmt *RS, IRFunction *F) {
+    if (F->isVoid()) {
+      return;
+    }
     static int RvCnt = 0;
     Indent() << "argOut.write(args._cont);\n";
     HardCilkType RetType = clangTypeToHardCilk(F->getReturnType());
@@ -439,8 +453,10 @@ void PrintHardCilkTask(llvm::raw_ostream &Out, clang::ASTContext &C,
       PANIC("UNSUPPORTED: more than one send argmuent destination");
     }
     intfs.push_back(std::make_pair("argOut", "uint64_t"));
-    std::string ArgDataOutTy = printHardCilkType(Info.RetTy);
-    intfs.push_back(std::make_pair("argDataOut", ArgDataOutTy + "_arg_out"));
+    if (Info.RetTy != TY_VOID) {
+      std::string ArgDataOutTy = printHardCilkType(Info.RetTy);
+      intfs.push_back(std::make_pair("argDataOut", ArgDataOutTy + "_arg_out"));
+    }
   }
   if (Task->Info.SpawnNextList.size() > 0) {
     if (Task->Info.SpawnNextList.size() > 1) {
@@ -539,23 +555,21 @@ void HardCilkTarget::PrintDef(llvm::raw_ostream &Out, IRFunction *Task,
     Out << "};\n\n";
   }
 
-  if (Info.SendArgList.size() != 0) {
-    if (!ArgOutImplList[Info.RetTy]) {
-      Out << "struct " << printHardCilkType(Info.RetTy) << "_arg_out {\n";
-      Out << "  addr_t addr;\n";
-      Out << "  " << printHardCilkType(Info.RetTy) << " data;\n";
-      Out << "  uint32_t size;\n";
-      Out << "  uint32_t allow;\n";
-      size_t argOutSize = hardCilkTypeSize(Info.RetTy) +
-                          hardCilkTypeSize(TY_UINT64) +
-                          hardCilkTypeSize(TY_UINT32) * 2;
-      size_t argOutPadding = PADDING(argOutSize, 32);
-      if (argOutPadding > 0) {
-        Out << "  uint8_t _padding[" << argOutPadding << "];\n";
-      }
-      Out << "};\n\n";
-      ArgOutImplList[Info.RetTy] = true;
+  if (Info.SendArgList.size() != 0 && !ArgOutImplList[Info.RetTy] && Info.RetTy != TY_VOID) {
+    Out << "struct " << printHardCilkType(Info.RetTy) << "_arg_out {\n";
+    Out << "  addr_t addr;\n";
+    Out << "  " << printHardCilkType(Info.RetTy) << " data;\n";
+    Out << "  uint32_t size;\n";
+    Out << "  uint32_t allow;\n";
+    size_t argOutSize = hardCilkTypeSize(Info.RetTy) +
+                        hardCilkTypeSize(TY_UINT64) +
+                        hardCilkTypeSize(TY_UINT32) * 2;
+    size_t argOutPadding = PADDING(argOutSize, 32);
+    if (argOutPadding > 0) {
+      Out << "  uint8_t _padding[" << argOutPadding << "];\n";
     }
+    Out << "};\n\n";
+    ArgOutImplList[Info.RetTy] = true;
   }
 }
 

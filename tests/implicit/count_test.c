@@ -5,9 +5,12 @@
 int nonsense(int n) {
     int *y = (int*)malloc(sizeof(int) * n);
     int m;
+    int x;
     for (int i = 0; i < n; i += 1) {
-        for (int j = 0; j < m; j += 1) {
-            m = cilk_spawn nonsense(i);
+        int j= 0; 
+        while (j <m ) {
+           x  = cilk_spawn nonsense(i);
+           j += 1;           
         }
     }
     cilk_sync;

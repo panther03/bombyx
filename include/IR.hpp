@@ -116,11 +116,11 @@ public:
 };
 
 struct IndexIRExpr : IRLvalExpr {
-  IRVarRef Arr;
+  std::unique_ptr<IRLvalExpr> Arr;
   std::unique_ptr<IRExpr> Ind;
 
 public:
-  IndexIRExpr(IRVarRef Arr, IRExpr *Ind)
+  IndexIRExpr(IRLvalExpr *Arr, IRExpr *Ind)
       : Arr(Arr), Ind(Ind), IRLvalExpr(EXK_LVAL_INDEX) {}
 
   static bool classof(const IRExpr *E) {
@@ -176,8 +176,8 @@ struct AccessIRExpr : IRLvalExpr {
   bool Arrow;
 
 public:
-  AccessIRExpr(IRVarRef Struct, std::string Field)
-      : Struct(Struct), Field(Field), IRLvalExpr(EXK_LVAL_ACCESS) {}
+  AccessIRExpr(IRVarRef Struct, std::string Field, bool Arrow)
+      : Struct(Struct), Field(Field), Arrow(Arrow), IRLvalExpr(EXK_LVAL_ACCESS) {}
 
   static bool classof(const IRExpr *E) {
     return E->getKind() == EXK_LVAL_ACCESS;
@@ -745,7 +745,7 @@ public:
   }
   void VisitIdent(IdentIRExpr *Node) {}
   void VisitAccess(AccessIRExpr *Node) {}
-  void VisitIndex(IndexIRExpr *Node) { Visit(Node->Ind.get()); }
+  void VisitIndex(IndexIRExpr *Node) { Visit(Node->Arr.get()); Visit(Node->Ind.get()); }
   void VisitCast(CastIRExpr *Node) { Visit(Node->E.get()); }
   void VisitDRef(DRefIRExpr *Node) { Visit(Node->Expr.get()); }
   void VisitStmt(IRStmt *S) {
@@ -928,6 +928,9 @@ public:
   unsigned getInd() const { return Ind; }
   const std::string &getName() const { return Name; }
   const IRType &getReturnType() const { return Ret; }
+  bool isVoid() const {
+    return (Ret->isVoidType());
+  }
 };
 
 class IRProgram {
@@ -1044,11 +1047,6 @@ public:
   void VisitIdent(IdentIRExpr *Node) { CB(Node->Ident, false); }
 
   void VisitAccess(AccessIRExpr *Node) { CB(Node->Struct, false); }
-
-  void VisitIndex(IndexIRExpr *Node) {
-    CB(Node->Arr, false);
-    Visit(Node->Ind.get());
-  }
 };
 /*
 struct ExprIdentifierIterator {

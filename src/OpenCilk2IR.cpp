@@ -63,7 +63,12 @@ public:
   }
 
   bool VisitCilkSpawnStmt(CilkSpawnStmt *Stmt) {
-    PANIC("TODO cilk spawn statements");
+    if (auto *CExpr = dyn_cast<CallExpr>(Stmt->getSpawnedStmt())) {
+      HandleSpawn(CExpr);
+    } else {
+      PANIC("unrecognized spawned expression, should be a function call");
+    }
+    return true;
   }
 };
 
@@ -148,6 +153,22 @@ public:
   void VisitExpr(Expr *E) {
     llvm::errs() << "Unhandled expr node: " << E->getStmtClassName() << "\n";
     llvm_unreachable("Unhandled expr node");
+  }
+
+  void HandleCilkSpawn(IRExpr *SpawnedE) {
+    if (auto *CallE = dyn_cast<CallIRExpr>(SpawnedE)) {
+      std::vector<IRExpr *> Args;
+      for (auto &Arg : CallE->Args) {
+        Args.push_back(Arg.get());
+        Arg.release();
+      }
+      IRFunRef FR = CallE->Fn;
+      delete CallE;
+      auto *SE = new ISpawnIRExpr(FR, Args);
+      ExprStack.push_back((IRExpr *)SE);
+    } else {
+      PANIC("unsupported: cilk spawn on non call expression");
+    }
   }
 
   ////////////
@@ -336,6 +357,17 @@ public:
     CurrB = JoinB;
   }
 
+  void VisitCilkSpawnStmt(CilkSpawnStmt *Stmt) {
+    Expr *E = dyn_cast<Expr>(Stmt->getSpawnedStmt());
+    if (!E)  {
+      PANIC("unrecognized expression in cilk spawn statement");
+    }
+    SpawnCtx = true;
+    auto *SpawnE = getExpr(E);
+    SpawnCtx = false;
+    HandleCilkSpawn(SpawnE);
+  }
+
   ////////////
   // Exprs //
   //////////
@@ -346,6 +378,14 @@ public:
 
   void VisitParenExpr(ParenExpr *Node) {
     ExprStack.push_back(getExpr(Node->getSubExpr()));
+  }
+
+  void VisitMemberExpr(MemberExpr *Node) {
+    IdentIRExpr *IE = dyn_cast<IdentIRExpr>(getExpr(Node->getBase()));
+    assert(IE);
+    auto *AE = new AccessIRExpr(IE->Ident, Node->getMemberDecl()->getName().str(), Node->isArrow());
+    delete IE;
+    ExprStack.push_back(AE);
   }
 
   void VisitIntegerLiteral(IntegerLiteral *Node) {
@@ -503,16 +543,14 @@ public:
   void VisitArraySubscriptExpr(ArraySubscriptExpr *Node) {
     auto *Arr = getExpr(Node->getBase());
 
-    if (auto *ArrIdent = dyn_cast<IdentIRExpr>(Arr)) {
-      auto *ArrRef = ArrIdent->Ident;
-      delete ArrIdent;
+    if (auto *ArrLval = dyn_cast<IRLvalExpr>(Arr)) {
       auto *Ind = getExpr(Node->getIdx());
-      IndexIRExpr *IE = new IndexIRExpr(ArrRef, Ind);
+      IndexIRExpr *IE = new IndexIRExpr(ArrLval, Ind);
       ExprStack.push_back((IRExpr *)IE);
     } else {
       llvm::errs()
-          << "Unsupported: non-identifier used for array subscript expression.";
-      llvm_unreachable("Non-identifier used for array subscript");
+          << "Unsupported: non-lvalue used for array subscript expression.";
+      llvm_unreachable("Non-lvalue used for array subscript");
     }
   }
 
@@ -555,21 +593,7 @@ public:
     ExprStack.push_back(CastE);
   }
 
-  void HandleCilkSpawn(IRExpr *SpawnedE) {
-    if (auto *CallE = dyn_cast<CallIRExpr>(SpawnedE)) {
-      std::vector<IRExpr *> Args;
-      for (auto &Arg : CallE->Args) {
-        Args.push_back(Arg.get());
-        Arg.release();
-      }
-      IRFunRef FR = CallE->Fn;
-      delete CallE;
-      auto *SE = new ISpawnIRExpr(FR, Args);
-      ExprStack.push_back((IRExpr *)SE);
-    } else {
-      PANIC("unsupported: cilk spawn on non call expression");
-    }
-  }
+  
 
   void VisitCilkSpawnExpr(CilkSpawnExpr *Node) {
     SpawnCtx = true;

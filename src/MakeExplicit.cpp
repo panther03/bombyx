@@ -438,11 +438,19 @@ struct FinalizeExplicitCPS {
             Dest = SS->Dest.release();
             SS->Src.release();
           }
+        } else if (auto EWS = dyn_cast<ExprWrapIRStmt>(S.get())) {
+          IS = dyn_cast<ISpawnIRExpr>(EWS->Expr.get());
+          if (IS) {
+            EWS->Expr.release();
+          }          
         }
-        if (Dest && IS) {
+
+        // has destination => expr has a spawn
+        assert(!Dest || IS);
+        if (Dest || IS) {
           // Find corresponding spawn next statement.
           SpawnNextIRStmt *SN = DFSTillSpawnNext(B.get());
-          if (!SN) {
+          if (!SN && Dest) {
             PANIC("Spawn has a return value, but no corresponding spawn "
                   "next..");
           }

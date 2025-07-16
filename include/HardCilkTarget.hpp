@@ -10,6 +10,7 @@ enum HardCilkType {
   TY_UINT32,
   TY_UINT64,
   TY_ADDR,
+  TY_VOID,
   TY_LAST
 };
 

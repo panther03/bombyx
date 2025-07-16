@@ -256,19 +256,25 @@ private:
 
   void handleSpawn(ESpawnIRStmt *ES, IRFunction *F) {
     const std::string &SpawnFnName = ES->Fn->getName();
-    const std::string &SpawnNextFnName = ES->SN->Fn->getName();
     Indent() << "cont sp" << SpawnCtr << "k;\n";
-    // TODO make it work on non-local
-    if (ES->Local) {
-      auto *IdentDest = dyn_cast<IdentIRExpr>(ES->Dest.get());
-      assert(IdentDest);
-      Indent() << "SN_BIND(SN_" << SpawnNextFnName << ", &sp" << SpawnCtr
-               << "k, " << GetSym(IdentDest->Ident->Name) << ");\n";
-    } else {
-      Indent() << "SN_BIND_EXT(SN_" << SpawnNextFnName << ", &sp" << SpawnCtr
-               << "k, &(";
-      ES->Dest->print(Out, C);
-      Out << "));\n";
+    if (ES->SN) {
+      const std::string &SpawnNextFnName = ES->SN->Fn->getName();
+      if (ES->Dest) {
+        if (ES->Local) {
+          auto *IdentDest = dyn_cast<IdentIRExpr>(ES->Dest.get());
+          assert(IdentDest);
+          Indent() << "SN_BIND(SN_" << SpawnNextFnName << ", &sp" << SpawnCtr
+                   << "k, " << GetSym(IdentDest->Ident->Name) << ");\n";
+        } else {
+          Indent() << "SN_BIND_EXT(SN_" << SpawnNextFnName << ", &sp" << SpawnCtr
+                   << "k, &(";
+          ES->Dest->print(Out, C);
+          Out << "));\n";
+        }
+      } else {
+        Indent() << "SN_BIND_VOID(SN_" << SpawnNextFnName << ", &sp" << SpawnCtr
+        << "k);\n";
+      }
     }
 
     Indent() << SpawnFnName << "_closure sp" << SpawnCtr << "c(sp" << SpawnCtr

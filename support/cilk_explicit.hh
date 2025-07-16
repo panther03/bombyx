@@ -95,6 +95,7 @@ template <class C> class spawn {
 #define SEND_ARGUMENT(k, n) {if (k.ret) {*((typeof(n)*)((k).ret)) = (n);} if (k.cls) {((k).cls)->jc--;} return; }
 #define SN_BIND(sn, k, field) {assert(sn.cls); (k)->init(&sn,sn.cls.get()); (k)->ret = (void*)&(sn.cls->field);}
 #define SN_BIND_EXT(sn, k, ptr) {assert(sn.cls); (k)->init(&sn,sn.cls.get()); (k)->ret = (void*)ptr;}
+#define SN_BIND_VOID(sn, k) {assert(sn.cls); (k)->init(&sn,sn.cls.get());}
 #define THREAD(fn_name) void fn_name (std::shared_ptr<closure> args)
 #define CLOSURE_DEF(name, ...) \
 struct name##_closure : public closure { \

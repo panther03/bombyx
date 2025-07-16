@@ -33,8 +33,8 @@ Sym PutSym(std::string Name) {
 ///////////
 
 void IndexIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
-  assert(Ind);
-  Ctx.IdentCB(Out, Arr);
+  assert(Ind && Arr);
+  Arr->print(Out, Ctx);
   Out << "[";
   Ind->print(Out, Ctx);
   Out << "]";
@@ -42,8 +42,9 @@ void IndexIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
 
 IRExpr *IndexIRExpr::clone() {
   assert(Ind);
+  IRLvalExpr *NewArr = dyn_cast<IRLvalExpr>(Arr->clone());
   IRExpr *NewInd = Ind->clone();
-  return new IndexIRExpr(Arr, NewInd);
+  return new IndexIRExpr(NewArr, NewInd);
 }
 
 void RefIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
@@ -85,7 +86,7 @@ void AccessIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
 
 IRExpr *AccessIRExpr::clone() {
   assert(Struct);
-  return new AccessIRExpr(Struct, Field);
+  return new AccessIRExpr(Struct, Field, Arrow);
 }
 
 void IdentIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
@@ -298,10 +299,13 @@ IRStmt *SpawnNextIRStmt::clone() {
 }
 
 void ESpawnIRStmt::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
-  assert(Dest);
-  Out << "espawn @";
-  Dest->print(Out, Ctx);
-  Out << " ";
+  if (Dest) {
+    Out << "espawn @";
+    Dest->print(Out, Ctx);
+    Out << " ";
+  } else {
+    Out << "espawn ";
+  }
   Out << Fn->getName();
   Out << "(";
   bool first = true;
@@ -313,7 +317,10 @@ void ESpawnIRStmt::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
     }
     Arg->print(Out, Ctx);
   }
-  Out << ") [" << SN->Fn->getName() << "]";
+  Out << ")";
+  if (SN) {
+    Out <<  "[" << SN->Fn->getName() << "]";
+  } 
 }
 
 IRStmt *ESpawnIRStmt::clone() {
@@ -321,7 +328,9 @@ IRStmt *ESpawnIRStmt::clone() {
   for (auto &Arg : Args) {
     NewArgs.push_back(Arg->clone());
   }
-  return new ESpawnIRStmt(dyn_cast<IRLvalExpr>(Dest->clone()), Fn, SN, NewArgs,
+  
+  IRLvalExpr *ND = Dest ? (dyn_cast<IRLvalExpr>(Dest->clone())) : nullptr;
+  return new ESpawnIRStmt(ND, Fn, SN, NewArgs,
                           Local);
 }
 

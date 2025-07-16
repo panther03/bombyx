@@ -8,7 +8,7 @@ class SymbolicCount {
 public:
   // To expand this with other types of expressions, can make an ADT with other
   // variants, like IfCountExpr & so on.
-  using ForCountExpr = std::pair<IRExpr *, SymbolicCount *>;
+  using ForCountExpr = std::pair<std::shared_ptr<IRExpr>, SymbolicCount *>;
   int N = 0;
   std::list<ForCountExpr> S;
 
@@ -95,11 +95,11 @@ bool operator==(const SymbolicCount &L, const SymbolicCount &R) {
 class SpawnCounter {
 public:
   std::unordered_map<IRStmt *, SymbolicCount *> ClsCntLookup;
+  SymbolicCount *InvalidCount;
 
 private:
   std::vector<IRExpr *> GlobalEnv;
   std::unordered_map<IRBasicBlock *, int> JoinCount;
-  SymbolicCount *InvalidCount;
   using EnvTy = std::unordered_map<IRVarRef, size_t>;
 
   IRExpr *extractLoopCount(LoopIRStmt *LS, EnvTy &PreEnv, EnvTy &PostEnv) {
@@ -242,7 +242,7 @@ private:
 
         if (!BodyCnt->isEmpty()) {
           if (loopCount) {
-            *CDestL += std::make_pair(loopCount, BodyCnt);
+            *CDestL += std::make_pair(std::shared_ptr<IRExpr>(loopCount), BodyCnt);
           } else {
             CDestL->N = -1;
             delete BodyCnt;
@@ -278,9 +278,9 @@ public:
   void countSpawns(IRBasicBlock *Entry) {
     EnvTy Env;
     countSpawns(Env, InvalidCount, Entry);
-    if (!InvalidCount->isEmpty()) {
-      PANIC("Espawn used before closure declaration..");
-    }
+    //if (!InvalidCount->isEmpty()) {
+    //  PANIC("Espawn used before closure declaration..");
+    //}
   }
 };
 
@@ -288,7 +288,7 @@ IRExpr *SymCountToExpr(SymbolicCount *C) {
   auto *NELit = new IntLiteralIRExpr(C->N);
   IRExpr *L = NELit;
   for (const auto &fe : C->S) {
-    auto *MulE = new BinopIRExpr(BinopIRExpr::BINOP_MUL, fe.first,
+    auto *MulE = new BinopIRExpr(BinopIRExpr::BINOP_MUL, fe.first.get(),
                                  SymCountToExpr(fe.second));
     L = new BinopIRExpr(BinopIRExpr::BINOP_ADD, L, MulE);
   }
@@ -308,6 +308,7 @@ void CountSpawns(IRProgram &P, ASTContext &C) {
         assert(CDS);
         llvm::outs() << CDS->Fn->getName() << " -> " << wrap(*Cnt, IC) << "\n";
       }
+      llvm::outs() << wrap(*SC.InvalidCount, IC) << "\n";
     }
 
     for (auto &[S, Cnt] : SC.ClsCntLookup) {
