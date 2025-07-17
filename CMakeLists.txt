@@ -6,10 +6,10 @@ project(bombyx-cc)
 # Platform-specific default install path
 set(DEFAULT_OPENCILK_HOME "/opt/OpenCilk") # Linux/macOS default
 
-set(REL_OPENCILK_HOME "${DEFAULT_OPENCILK_HOME}" CACHE PATH "OpenCilk installation root directory")
+set(OPENCILK_HOME "${DEFAULT_OPENCILK_HOME}" CACHE PATH "OpenCilk installation root directory")
 
 # Convert to absolute path and verify
-get_filename_component(OPENCILK_HOME "${REL_OPENCILK_HOME}" ABSOLUTE)
+get_filename_component(OPENCILK_HOME "${OPENCILK_HOME}" ABSOLUTE)
 
 # Check if the directory exists (or can be created)
 if(NOT EXISTS "${OPENCILK_HOME}")
