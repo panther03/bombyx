@@ -16,6 +16,9 @@
 #include "clang/Basic/SourceLocation.h"
 #include "llvm/Support/ErrorHandling.h"
 
+std::set<std::string> GIgnoreFns;
+std::vector<clang::RecordDecl *> GRecordDecls;
+
 //////////////////////////////////
 // Scan AST for relevant tasks //
 ////////////////////////////////
@@ -33,6 +36,9 @@ public:
   explicit CilkAnalyzeVisitor() {}
 
   bool VisitFunctionDecl(FunctionDecl *Decl) {
+    if (GIgnoreFns.find(Decl->getName().str()) != GIgnoreFns.end()) {
+      return false;
+    }
     CurrF = Decl;
     return true;
   }
@@ -188,6 +194,10 @@ public:
     } else {
       PANIC("unsupported: label statement")
     }
+  }
+
+  void VisitNullStmt(NullStmt *Node) {
+    
   }
 
   void VisitDeclStmt(DeclStmt *Node) {
@@ -510,7 +520,8 @@ public:
       return;
     }
     case clang::UO_Deref: {
-      auto *DR = new DRefIRExpr(SE);
+      QualType PointeeType = (Node->getSubExpr()->getType())->getPointeeType();
+      auto *DR = new DRefIRExpr(SE, PointeeType);
       ExprStack.push_back((IRExpr *)DR);
       return;
     }
@@ -545,7 +556,8 @@ public:
 
     if (auto *ArrLval = dyn_cast<IRLvalExpr>(Arr)) {
       auto *Ind = getExpr(Node->getIdx());
-      IndexIRExpr *IE = new IndexIRExpr(ArrLval, Ind);
+      IRType ArrType = (Node->getBase()->getType())->getPointeeType();
+      IndexIRExpr *IE = new IndexIRExpr(ArrLval, Ind, ArrType);
       ExprStack.push_back((IRExpr *)IE);
     } else {
       llvm::errs()
@@ -665,6 +677,13 @@ public:
       FunLookup[Decl] = F;
     } else if (Tasks.find(Decl) != Tasks.end()) {
       PANIC("unsupported: forward declaration of task function");
+    }
+    return true;
+  }
+
+  bool VisitRecordDecl(clang::RecordDecl *RD) {
+    if (RD->isThisDeclarationADefinition()) {
+      GRecordDecls.push_back(RD);
     }
     return true;
   }

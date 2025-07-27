@@ -10,8 +10,9 @@ int fib(int n) {
     return f1 + f2;
 }
 
-void main() {
+int main() {
     int n = cilk_spawn fib(6);
     cilk_sync;
     printf("fib = %d\n", n);
+    return 0;
 }

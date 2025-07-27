@@ -34,9 +34,9 @@ Sym PutSym(std::string Name) {
 
 void IndexIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   assert(Ind && Arr);
-  Arr->print(Out, Ctx);
+  Ctx.ExprCB(&Ctx, Out, Arr.get());
   Out << "[";
-  Ind->print(Out, Ctx);
+  Ctx.ExprCB(&Ctx, Out, Ind.get());
   Out << "]";
 }
 
@@ -44,13 +44,13 @@ IRExpr *IndexIRExpr::clone() {
   assert(Ind);
   IRLvalExpr *NewArr = dyn_cast<IRLvalExpr>(Arr->clone());
   IRExpr *NewInd = Ind->clone();
-  return new IndexIRExpr(NewArr, NewInd);
+  return new IndexIRExpr(NewArr, NewInd, ArrType);
 }
 
 void RefIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   assert(E);
   Out << "&(";
-  E->print(Out, Ctx);
+  Ctx.ExprCB(&Ctx, Out, E.get());
   Out << ")";
 }
 
@@ -63,14 +63,14 @@ IRExpr *RefIRExpr::clone() {
 void DRefIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   assert(Expr);
   Out << "*(";
-  Expr->print(Out, Ctx);
+  Ctx.ExprCB(&Ctx, Out, Expr.get());
   Out << ")";
 }
 
 IRExpr *DRefIRExpr::clone() {
   assert(Expr);
   IRExpr *NewE = Expr->clone();
-  return new DRefIRExpr(NewE);
+  return new DRefIRExpr(NewE, PointeeType);
 }
 
 void AccessIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
@@ -136,11 +136,11 @@ IRExpr *ASTLiteralIRExpr::clone() {
 void BinopIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   assert(Left && Right);
   Out << "(";
-  Left->print(Out, Ctx);
+  Ctx.ExprCB(&Ctx, Out, Left.get());
   Out << " ";
   printBinop(Out);
   Out << " ";
-  Right->print(Out, Ctx);
+  Ctx.ExprCB(&Ctx, Out, Right.get());
   Out << ")";
 }
 
@@ -156,11 +156,11 @@ void UnopIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   Out << "(";
   const char *Op;
   if (printUnop(Op)) {
-    Expr->print(Out, Ctx);
+    Ctx.ExprCB(&Ctx, Out, Expr.get());
     Out << Op;
   } else {
     Out << Op;
-    Expr->print(Out, Ctx);
+    Ctx.ExprCB(&Ctx, Out, Expr.get());
   }
   Out << ")";
 }
@@ -186,7 +186,7 @@ void ISpawnIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
     } else {
       Out << ",";
     }
-    Arg->print(Out, Ctx);
+    Ctx.ExprCB(&Ctx, Out, Arg.get());
   }
   Out << ")";
 }
@@ -217,7 +217,7 @@ void CallIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
     } else {
       Out << ",";
     }
-    Arg->print(Out, Ctx);
+    Ctx.ExprCB(&Ctx, Out, Arg.get());
   }
   Out << ")";
 }
@@ -238,7 +238,7 @@ void CastIRExpr::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   Out << "((";
   CastType.print(Out, Ctx.ASTCtx.getPrintingPolicy());
   Out << ") ";
-  E->print(Out, Ctx);
+  Ctx.ExprCB(&Ctx, Out, E.get());
   Out << ")";
 }
 
@@ -258,7 +258,7 @@ void LoopIRStmt::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
     Init->print(Out, Ctx);
   }
   Out << ";";
-  Cond->print(Out, Ctx);
+  Ctx.ExprCB(&Ctx, Out, Cond.get());
   Out << ";";
   if (Inc) {
     Inc->print(Out, Ctx);
@@ -277,7 +277,7 @@ IRStmt *LoopIRStmt::clone() {
 void IfIRStmt::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   assert(Cond);
   Out << "if (";
-  Cond->print(Out, Ctx);
+  Ctx.ExprCB(&Ctx, Out, Cond.get());
   Out << ")";
 }
 
@@ -301,7 +301,7 @@ IRStmt *SpawnNextIRStmt::clone() {
 void ESpawnIRStmt::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   if (Dest) {
     Out << "espawn @";
-    Dest->print(Out, Ctx);
+    Ctx.ExprCB(&Ctx, Out, Dest.get());
     Out << " ";
   } else {
     Out << "espawn ";
@@ -315,7 +315,7 @@ void ESpawnIRStmt::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
     } else {
       Out << ",";
     }
-    Arg->print(Out, Ctx);
+    Ctx.ExprCB(&Ctx, Out, Arg.get());
   }
   Out << ")";
   if (SN) {
@@ -334,9 +334,9 @@ IRStmt *ESpawnIRStmt::clone() {
                           Local);
 }
 
-void ExprWrapIRStmt ::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
+void ExprWrapIRStmt::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   assert(Expr);
-  Expr->print(Out, Ctx);
+  Ctx.ExprCB(&Ctx, Out, Expr.get());
 }
 
 IRStmt *ExprWrapIRStmt::clone() {
@@ -346,9 +346,10 @@ IRStmt *ExprWrapIRStmt::clone() {
 
 void StoreIRStmt::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   assert(Dest);
-  Dest->print(Out, Ctx);
+
+  Ctx.ExprCB(&Ctx, Out, Dest.get());
   Out << " = ";
-  Src->print(Out, Ctx);
+  Ctx.ExprCB(&Ctx, Out, Src.get());
 }
 
 IRStmt *StoreIRStmt::clone() {
@@ -362,7 +363,7 @@ void CopyIRStmt::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   assert(Dest);
   Ctx.IdentCB(Out, Dest);
   Out << " = ";
-  Src->print(Out, Ctx);
+  Ctx.ExprCB(&Ctx, Out, Src.get());
 }
 
 IRStmt *CopyIRStmt::clone() {
@@ -387,7 +388,7 @@ void ClosureDeclIRStmt::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   Out << " )";
   if (SpawnCount) {
     Out << " // SC <- ";
-    SpawnCount->print(Out, Ctx);
+    Ctx.ExprCB(&Ctx, Out, SpawnCount.get());
   }
 }
 
@@ -399,7 +400,7 @@ IRStmt *ClosureDeclIRStmt::clone() {
 void ReturnIRStmt::print(llvm::raw_ostream &Out, IRPrintContext &Ctx) {
   Out << "return ";
   if (RetVal) {
-    RetVal->print(Out, Ctx);
+    Ctx.ExprCB(&Ctx, Out, RetVal.get());
   }
 }
 
@@ -442,7 +443,7 @@ void IRBasicBlock::clone(IRBasicBlock *Dest) {
 }
 
 IRBasicBlock *IRBasicBlock::splitAt(int Index) {
-  assert(Index >= 0 && Index < Stmts.size());
+  assert(Index >= 0 && Index <= Stmts.size());
   auto *RBlock = Parent->createBlock();
   for (int i = Index; i < Stmts.size(); i++) {
     RBlock->pushStmtBack(Stmts[i].release());
@@ -787,3 +788,4 @@ void ScopedIRTraverser::traverse(IRFunction &F) {
     }
   }
 }
+

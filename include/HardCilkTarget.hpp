@@ -4,7 +4,7 @@
 #include "clang/AST/ASTContext.h"
 #include <unordered_map>
 
-enum HardCilkType {
+enum HardCilkBaseType {
   TY_UINT8,
   TY_UINT16,
   TY_UINT32,
@@ -14,17 +14,28 @@ enum HardCilkType {
   TY_LAST
 };
 
+struct HardCilkRecordType {
+  std::string Name;
+  std::vector<std::pair<std::string, std::unique_ptr<std::variant<HardCilkBaseType, HardCilkRecordType>>>> Fields;
+};
+
+using HardCilkType = std::variant<HardCilkBaseType, HardCilkRecordType>;
+using HardCilkRecordField = std::pair<std::string, std::unique_ptr<HardCilkType>>;
+
+
 struct HCTaskInfo {
   std::set<IRFunction *> SendArgList;
   bool IsRoot = false;
   bool IsCont = false;
   size_t TaskSize;
   size_t TaskPadding;
-  HardCilkType RetTy;
+  std::unique_ptr<HardCilkType> RetTy;
   HCTaskInfo() {}
 };
 
 using TaskInfosTy = std::unordered_map<IRFunction *, HCTaskInfo>;
+
+HardCilkType* clangTypeToHardCilk(IRType &Ty);
 
 class HardCilkTarget {
 private:

@@ -7,48 +7,89 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <llvm/Support/JSON.h>
+#include <iostream>
+
+#include "OpenCilk2IR.hpp"
+
 
 #define ALIGN(x, A) ((x + A - 1) & -(A))
 #define PADDING(x, A) (ALIGN(x, A) - x)
 
-HardCilkType clangTypeToHardCilk(IRType &Ty) {
+bool typeIsVoid(HardCilkType &Ty) {
+  const HardCilkBaseType *BTy = std::get_if<HardCilkBaseType>(&Ty);
+  return BTy && (*BTy == TY_VOID);
+}
+
+HardCilkRecordType clangRecordTypeToHardCilk(const RecordDecl *RD) {
+    // loop through the fields of the record type
+    std::vector<HardCilkRecordField> fields;
+    for (auto field : RD->fields()) {
+      std::unique_ptr<HardCilkType> HCT(clangTypeToHardCilk(field->getType()));
+      fields.push_back(std::make_pair(field->getName().str(), std::move(HCT)));
+    }
+    return HardCilkRecordType {
+      .Name = RD->getName().str(),
+      .Fields = std::move(fields)
+    };
+}
+
+HardCilkType* clangTypeToHardCilk(IRType &Ty) {
+  HardCilkType *HCT = new HardCilkType();
   if (auto BTy = dyn_cast<BuiltinType>(Ty.getTypePtr())) {
     switch (BTy->getKind()) {
     // TODO ???? idk what to map here
     case clang::BuiltinType::Int:
-      return TY_UINT32;
+      *HCT = TY_UINT32; break;
     case clang::BuiltinType::UInt:
-      return TY_UINT32;
+      *HCT = TY_UINT32; break;
     case clang::BuiltinType::Char8:
-      return TY_UINT8;
+      *HCT = TY_UINT8; break;
     case clang::BuiltinType::UChar:
-      return TY_UINT8;
+      *HCT = TY_UINT8; break;
     case clang::BuiltinType::UShort:
-      return TY_UINT16;
+      *HCT = TY_UINT16; break;
     case clang::BuiltinType::Short:
-      return TY_UINT16;
+      *HCT = TY_UINT16; break;
     case clang::BuiltinType::Long:
-      return TY_UINT32;
+      *HCT = TY_UINT32; break;
     case clang::BuiltinType::ULong:
-      return TY_UINT32;
+      *HCT = TY_UINT32; break;
     case clang::BuiltinType::LongLong:
-      return TY_UINT64;
+      *HCT = TY_UINT64; break;
     case clang::BuiltinType::ULongLong:
-      return TY_UINT64;
+      *HCT = TY_UINT64; break;
     case clang::BuiltinType::Void:
-      return TY_VOID;
+      *HCT = TY_VOID; break;
     default: {
       PANIC("Unrecognized builtin type kind %d\n", BTy->getKind());
     }
     }
   } else if (isa<PointerType>(Ty.getTypePtr())) {
-    return TY_ADDR;
+    *HCT = TY_ADDR;
+  } else if (auto *ET = dyn_cast<ElaboratedType>(Ty.getTypePtr()))
+  {
+    auto *RT = ET->getNamedType()->getAs<RecordType>();
+    if (!RT) {
+      PANIC("Unrecognized elaborated type %s", ET->getTypeClassName());
+    }
+    auto *RD = RT->getAsRecordDecl();
+    HardCilkRecordType HCRT = clangRecordTypeToHardCilk(RD);
+   /*std::string ElabName;
+    llvm::raw_string_ostream OutS(ElabName);
+   auto *Q = ET->getQualifier();
+   Q->dump(OutS);
+    HCRT.Name = ElabName;*/
+    *HCT = std::move(HCRT);
+  } else if (auto *RT = dyn_cast<RecordType>(Ty.getTypePtr())) {
+    auto *RD = RT->getAsRecordDecl();
+    *HCT = clangRecordTypeToHardCilk(RD);
   } else {
     PANIC("Unrecognized LLVM type class: %s", Ty->getTypeClassName());
   }
+  return HCT;
 }
 
-int hardCilkTypeSize(HardCilkType Ty) {
+int hardCilkTypeSize(HardCilkBaseType Ty) {
   switch (Ty) {
   case TY_UINT8:
     return 1;
@@ -66,7 +107,20 @@ int hardCilkTypeSize(HardCilkType Ty) {
   return -1;
 }
 
-const char *printHardCilkType(HardCilkType Ty) {
+int hardCilkTypeSize(HardCilkType *Ty) {
+  if (auto *BTy = std::get_if<HardCilkBaseType>(Ty)) {
+    return hardCilkTypeSize(*BTy);
+  } else {
+    auto &RTy = std::get<HardCilkRecordType>(*Ty);
+    int size = 0;
+    for (auto &[_,FieldTy] : RTy.Fields) {
+      size += hardCilkTypeSize(FieldTy.get());
+    }
+    return size;
+  }
+}
+
+const char *printHardCilkType(HardCilkBaseType Ty) {
   switch (Ty) {
   case TY_UINT8:
     return "uint8_t";
@@ -80,6 +134,14 @@ const char *printHardCilkType(HardCilkType Ty) {
     return "addr_t";
   default:
     return nullptr;
+  }
+}
+
+const char *printHardCilkType(HardCilkType *Ty) {
+  if (auto *BTy = std::get_if<HardCilkBaseType>(Ty)) {
+    return printHardCilkType(*BTy);
+  } else {
+    return (std::get<HardCilkRecordType>(*Ty)).Name.c_str();
   }
 }
 
@@ -149,12 +211,16 @@ HardCilkTarget::HardCilkTarget(IRProgram &P, const std::string &AppName)
                  ? 4
                  : 0); // extra 8 bytes for continuation and 4 for counter
     for (auto &Var : T->Vars) {
+      std::cerr << "find type of " << GetSym(Var.Name); 
       if (Var.DeclLoc == IRVarDecl::ARG) {
-        Info.TaskSize += hardCilkTypeSize(clangTypeToHardCilk(Var.Type));
+        auto *HCT = clangTypeToHardCilk(Var.Type);
+        Info.TaskSize += hardCilkTypeSize(HCT);
+        delete HCT;
       }
+      std::cerr << "\n";
     }
     Info.TaskPadding = PADDING(Info.TaskSize, 32);
-    Info.RetTy = clangTypeToHardCilk(T->getReturnType());
+    Info.RetTy = std::unique_ptr<HardCilkType>(clangTypeToHardCilk(T->getReturnType()));
   }
   analyzeSendArguments();
 }
@@ -165,7 +231,8 @@ llvm::json::Object getSchedulerSide(HCTaskInfo &TaskInfo) {
   obj["numVirtualServers"] = 1;
   obj["capacityVirtualQueue"] = 4096;
   obj["capacityPhysicalQueue"] = 64;
-  obj["portWidth"] = (TaskInfo.TaskSize + TaskInfo.TaskPadding) * 8;
+  int64_t totalSize = (TaskInfo.TaskSize + TaskInfo.TaskPadding) * 8;
+  obj["portWidth"] = totalSize;
   return obj;
 }
 
@@ -196,7 +263,8 @@ llvm::json::Object printTaskDescriptor(IRFunction *Task, HCTaskInfo &TaskInfo) {
   obj["isRoot"] = TaskInfo.IsRoot;
   obj["isCont"] = TaskInfo.IsCont;
   obj["dynamicMemAlloc"] = false;
-  obj["widthTask"] = (TaskInfo.TaskPadding + TaskInfo.TaskSize * 8); // closure size in bits
+  int64_t closureSize = (TaskInfo.TaskPadding + TaskInfo.TaskSize * 8); // closure size in bits
+  obj["widthTask"] = closureSize;
   obj["widthMalloc"] = 0;
   obj["variableSpawn"] = false;
   std::vector<llvm::json::Value> sidesConfigs{getSchedulerSide(TaskInfo)};
@@ -253,21 +321,18 @@ const char *DESCRIPTOR_TEMPLATE = R"(#pragma once
 #include <stddef.h>
 #include <stdint.h>
 
-#define MEM_OUT(mem_port, addr, type, value)                                   \
-  *((type(*))((uint8_t *)(mem_port) + (addr))) = (value)
-#define MEM_IN(mem_port, addr, type)                                           \
+#define MEM(mem_port, addr, type) \
   *((type(*))((uint8_t *)(mem_port) + (addr)))
 
-#define MEM_ARR_OUT(mem_port, addr, idx, type, value)                          \
-  *((type(*))((uint8_t *)(mem_port) + (addr) + (idx) * sizeof(type))) = (value)
-#define MEM_ARR_IN(mem_port, addr, idx, type)                                  \
+#define MEM_ARR(mem_port, addr, idx, type) \
   *((type(*))((uint8_t *)(mem_port) + (addr) + (idx) * sizeof(type)))
+
+#define MEM_STRUCT(mem_port, str, str_type, field) \
+    ((str_type*)((uint8_t*)(mem) + (str)))->field
 
 using namespace std;
 
 using addr_t = uint64_t;
-
-
 
 )";
 
@@ -389,7 +454,7 @@ private:
     }
     static int RvCnt = 0;
     Indent() << "argOut.write(args._cont);\n";
-    HardCilkType RetType = clangTypeToHardCilk(F->getReturnType());
+    HardCilkType *RetType = clangTypeToHardCilk(F->getReturnType());
     const char *RetTypeStr = printHardCilkType(RetType);
     Indent() << RetTypeStr << "_arg_out a" << RvCnt << ";\n";
     Indent() << "a" << RvCnt << ".addr = args._cont;\n";
@@ -397,10 +462,11 @@ private:
     RS->RetVal->print(Out, C);
     Out << ";\n";
     size_t RetTypeSz = llvm::Log2_32_Ceil(hardCilkTypeSize(RetType));
-    Indent() << "a" << RvCnt << ".size = " << RetTypeSz << ";\n";
+    Indent() << "a" << RvCnt << ".size = " << RetTypeSz << "; " << "// TODO calculation could be wrong fix manually for now\n";
     Indent() << "a" << RvCnt << ".allow = 1;\n";
     Indent() << "argDataOut.write(a" << RvCnt << ");\n";
     RvCnt++;
+    delete RetType;
   }
 
   void visitStmt(IRStmt *S, IRBasicBlock *B) {
@@ -445,16 +511,22 @@ void PrintHardCilkTask(llvm::raw_ostream &Out, clang::ASTContext &C,
   std::vector<std::pair<std::string, std::string>> intfs;
   Out << "void " << Task->getName() << " (\n";
   intfs.push_back(std::make_pair("taskIn", Task->getName() + "_task"));
-  if (Task->Info.SpawnList.find(Task) != Task->Info.SpawnList.end()) {
-    intfs.push_back(std::make_pair("taskOut", Task->getName() + "_task"));
+  bool SpawnsItself = false;
+  assert(Task->Info.SpawnList.size() <= 2);
+  for (IRFunction *SpawnTask : Task->Info.SpawnList) {
+    if (SpawnTask == Task) {
+      intfs.push_back(std::make_pair("taskOut", Task->getName() + "_task"));
+    } else {
+      intfs.push_back(std::make_pair("taskGlobalOut", SpawnTask->getName() + "_task"));
+    }
   }
   if (Info.SendArgList.size() > 0) {
     if (Info.SendArgList.size() > 1) {
       PANIC("UNSUPPORTED: more than one send argmuent destination");
     }
     intfs.push_back(std::make_pair("argOut", "uint64_t"));
-    if (Info.RetTy != TY_VOID) {
-      std::string ArgDataOutTy = printHardCilkType(Info.RetTy);
+    if (typeIsVoid(*Info.RetTy)) {
+      std::string ArgDataOutTy = printHardCilkType(Info.RetTy.get());
       intfs.push_back(std::make_pair("argDataOut", ArgDataOutTy + "_arg_out"));
     }
   }
@@ -480,15 +552,40 @@ void PrintHardCilkTask(llvm::raw_ostream &Out, clang::ASTContext &C,
 
   for (auto &Local : Task->Vars) {
     if (Local.DeclLoc == IRVarDecl::LOCAL) {
+      std::cerr << "find type of " << GetSym(Local.Name); 
       Out << TAB;
       Out << printHardCilkType(clangTypeToHardCilk(Local.Type));
       Out << " " << GetSym(Local.Name) << ";\n";
+      std::cerr << "\n";
     }
   }
 
   Out << "  " << intfs[0].second << " args = taskIn.read();\n\n";
   Printer.traverse(*Task);
   Out << "}\n\n";
+
+}
+
+void handleArrow(AccessIRExpr *AE, IRPrintContext *C, llvm::raw_ostream &Out) {
+  const QualType PT = (AE->Struct->Type)->getPointeeType();
+  std::string StructName = PT.getAsString();
+  Out << "MEM_STRUCT(mem, ";
+  C->IdentCB(Out, AE->Struct);
+  Out << ", " << StructName << ", " << AE->Field << ")";
+}
+
+void handleArray(IndexIRExpr *IE, IRPrintContext *C, llvm::raw_ostream &Out) {
+  Out << "MEM_ARR(mem, ";
+  C->ExprCB(C, Out, IE->Arr.get());
+  Out << ", ";
+  C->ExprCB(C, Out, IE->Ind.get());
+  Out << ", " << IE->ArrType.getAsString() << ")";
+}
+
+void handleDeref(DRefIRExpr *DE, IRPrintContext *C, llvm::raw_ostream &Out) {
+  Out << "MEM(mem, ";
+  C->ExprCB(C, Out, DE->Expr.get());
+  Out << ", " << DE->PointeeType.getAsString() << ")";
 }
 
 void HardCilkTarget::PrintHardCilk(llvm::raw_ostream &Out,
@@ -514,6 +611,22 @@ void HardCilkTarget::PrintHardCilk(llvm::raw_ostream &Out,
             PANIC("unsupported");
           }
         },
+    .ExprCB =
+        [&](IRPrintContext *C, llvm::raw_ostream &Out, IRExpr *E) {
+          if (auto *AE = dyn_cast<AccessIRExpr>(E)) {
+            if (AE->Arrow) {
+              handleArrow(AE, C, Out);
+            } else {
+              AE->print(Out, *C);
+            }
+          } else if (auto *DE = dyn_cast<DRefIRExpr>(E)) {
+            handleDeref(DE, C, Out);
+          } else if (auto *IE = dyn_cast<IndexIRExpr>(E)) {
+            handleArray(IE, C, Out);
+          } else {
+            E->print(Out, *C);
+          }
+        }
 };
   HardCilkPrinter Printer(Out, IRC, TaskInfos);
   for (auto &[T, Info] : TaskInfos) {
@@ -533,6 +646,7 @@ void HardCilkTarget::PrintDef(llvm::raw_ostream &Out, IRFunction *Task,
       auto HCTy = clangTypeToHardCilk(Var.Type);
       Out << "  " << printHardCilkType(HCTy) << " " << GetSym(Var.Name)
           << ";\n";
+      delete HCTy;
     }
   }
   if (Info.TaskPadding > 0) {
@@ -555,13 +669,17 @@ void HardCilkTarget::PrintDef(llvm::raw_ostream &Out, IRFunction *Task,
     Out << "};\n\n";
   }
 
-  if (Info.SendArgList.size() != 0 && !ArgOutImplList[Info.RetTy] && Info.RetTy != TY_VOID) {
-    Out << "struct " << printHardCilkType(Info.RetTy) << "_arg_out {\n";
+  bool OkBaseType = true;
+  if (auto *BTy = std::get_if<HardCilkBaseType>(Info.RetTy.get())) {
+    OkBaseType = !ArgOutImplList[*BTy] && (*BTy != TY_VOID);
+  }
+  if (Info.SendArgList.size() != 0 && OkBaseType) {
+    Out << "struct " << printHardCilkType(Info.RetTy.get()) << "_arg_out {\n";
     Out << "  addr_t addr;\n";
-    Out << "  " << printHardCilkType(Info.RetTy) << " data;\n";
+    Out << "  " << printHardCilkType(Info.RetTy.get()) << " data;\n";
     Out << "  uint32_t size;\n";
     Out << "  uint32_t allow;\n";
-    size_t argOutSize = hardCilkTypeSize(Info.RetTy) +
+    size_t argOutSize = hardCilkTypeSize(Info.RetTy.get()) +
                         hardCilkTypeSize(TY_UINT64) +
                         hardCilkTypeSize(TY_UINT32) * 2;
     size_t argOutPadding = PADDING(argOutSize, 32);
@@ -569,12 +687,22 @@ void HardCilkTarget::PrintDef(llvm::raw_ostream &Out, IRFunction *Task,
       Out << "  uint8_t _padding[" << argOutPadding << "];\n";
     }
     Out << "};\n\n";
-    ArgOutImplList[Info.RetTy] = true;
+    if (auto BTy = std::get_if<HardCilkBaseType>(Info.RetTy.get())) {
+      ArgOutImplList[*BTy] = true;
+    }
   }
 }
 
 void HardCilkTarget::PrintDefs(llvm::raw_ostream &Out) {
   Out << DESCRIPTOR_TEMPLATE;
+  for (auto *RD : GRecordDecls) {
+    HardCilkRecordType HCRT = clangRecordTypeToHardCilk(RD);
+    Out << "typedef struct {\n";
+    for (auto &field: HCRT.Fields) {
+      Out << "  " << printHardCilkType(field.second.get()) << " " << field.first << ";\n";
+    }
+    Out << "} " << HCRT.Name << ";\n\n";
+  }
   for (auto &[T, Info] : TaskInfos) {
     PrintDef(Out, T, Info);
   }

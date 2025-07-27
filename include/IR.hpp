@@ -52,12 +52,16 @@ static void identPrintSimple(llvm::raw_ostream &Out, IRVarRef VR) {
   Out << GetSym(VR->Name);
 }
 
+struct IRPrintContext;
+static void exprPrintId(IRPrintContext *C, llvm::raw_ostream &Out, IRExpr *E);
+
 struct IRPrintContext {
   clang::ASTContext &ASTCtx;
   const char *NewlineSymbol;
   bool GraphVizEscapeChars = false;
   std::function<void(llvm::raw_ostream &, IRVarRef)> IdentCB =
       &identPrintSimple;
+  std::function<void(IRPrintContext*, llvm::raw_ostream &, IRExpr*)> ExprCB = &exprPrintId;
 };
 
 class IRExpr {
@@ -118,10 +122,11 @@ public:
 struct IndexIRExpr : IRLvalExpr {
   std::unique_ptr<IRLvalExpr> Arr;
   std::unique_ptr<IRExpr> Ind;
+  IRType ArrType;
 
 public:
-  IndexIRExpr(IRLvalExpr *Arr, IRExpr *Ind)
-      : Arr(Arr), Ind(Ind), IRLvalExpr(EXK_LVAL_INDEX) {}
+  IndexIRExpr(IRLvalExpr *Arr, IRExpr *Ind, IRType ArrType)
+      : Arr(Arr), Ind(Ind), ArrType(ArrType), IRLvalExpr(EXK_LVAL_INDEX) {}
 
   static bool classof(const IRExpr *E) {
     return E->getKind() == EXK_LVAL_INDEX;
@@ -133,9 +138,10 @@ public:
 
 struct DRefIRExpr : IRLvalExpr {
   std::unique_ptr<IRExpr> Expr;
+  IRType PointeeType;
 
 public:
-  DRefIRExpr(IRExpr *E) : Expr(E), IRLvalExpr(EXK_LVAL_DREF) {}
+  DRefIRExpr(IRExpr *E, IRType PointeeType) : Expr(E), PointeeType(PointeeType), IRLvalExpr(EXK_LVAL_DREF) {}
 
   static bool classof(const IRExpr *E) { return E->getKind() == EXK_LVAL_DREF; }
 
@@ -1083,3 +1089,7 @@ public:
 
   bool done() { return ReturnQueue.empty(); }
 };*/
+
+static void exprPrintId(IRPrintContext *C, llvm::raw_ostream &Out, IRExpr *E) {
+  E->print(Out, *C);
+}

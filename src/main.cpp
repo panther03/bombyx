@@ -124,25 +124,11 @@ public:
 };
 
 class BombyxPragmaHandler : public clang::PragmaHandler {
-public:
-  BombyxPragmaHandler() : PragmaHandler("BOMBYX") {}
-
-  void HandlePragma(clang::Preprocessor &PP, clang::PragmaIntroducer Introducer,
-                    clang::Token &FirstToken) override {
-
+private:
+  void daePragma(clang::Preprocessor &PP, clang::PragmaIntroducer Introducer,
+                 clang::Token &FirstToken) {
+        
     clang::Token Tok;
-    PP.Lex(Tok);
-    // Check if we got an identifier (like "DAE")
-    if (Tok.is(clang::tok::identifier)) {
-      std::string Arg = PP.getSpelling(Tok);
-
-      if (Arg != "DAE") {
-        PANIC("unknown bombyx pragma %s", Arg.c_str());
-      }
-    } else {
-      PP.Diag(Tok.getLocation(), clang::diag::err_expected_after) << "BOMBYX";
-    }
-
     // Consume remaining tokens until end of directive
     PP.Lex(Tok);
     while (!Tok.is(clang::tok::eod)) {
@@ -159,9 +145,14 @@ public:
     ColTok.startToken();
     ColTok.setKind(tok::colon);
 
-    SmallVector<Token, 2> TokenList;
+    Token SemiTok;
+    SemiTok.startToken();
+    SemiTok.setKind(tok::semi);
+
+    SmallVector<Token, 3> TokenList;
     TokenList.push_back(LabelTok);
     TokenList.push_back(ColTok);
+    TokenList.push_back(SemiTok);
 
     for (Token &Tok : TokenList)
       Tok.setLocation(FirstToken.getLocation());
@@ -170,6 +161,51 @@ public:
     PP.EnterTokenStream(TokenArray,
                         /*DisableMacroExpansion=*/false,
                         /*IsReinject=*/false);
+  }
+
+  void fnIgnorePragma(clang::Preprocessor &PP,
+                      clang::PragmaIntroducer Introducer,
+                      clang::Token &FirstToken) {
+    std::string Arg;
+    clang::Token Tok;
+    PP.Lex(Tok);
+    if (Tok.is(clang::tok::identifier)) {
+      GIgnoreFns.insert(PP.getSpelling(Tok));
+    } else {
+      PANIC("fuck");
+      //PP.Diag(Tok.getLocation(), clang::diag::err_expected_after) << "IGNORE";
+    }
+
+    // Consume remaining tokens until end of directive
+    PP.Lex(Tok);
+    while (!Tok.is(clang::tok::eod)) {
+      PP.Lex(Tok);
+    }
+  }
+
+public:
+  BombyxPragmaHandler() : PragmaHandler("BOMBYX") {}
+
+  void HandlePragma(clang::Preprocessor &PP, clang::PragmaIntroducer Introducer,
+                    clang::Token &FirstToken) override {
+
+    clang::Token Tok;
+    PP.Lex(Tok);
+    // Check if we got an identifier (like "DAE")
+    std::string Arg;
+    if (Tok.is(clang::tok::identifier)) {
+      Arg = PP.getSpelling(Tok);
+    } else {
+      PP.Diag(Tok.getLocation(), clang::diag::err_expected_after) << "BOMBYX";
+    }
+
+    if (Arg == "DAE") {
+      daePragma(PP, Introducer, FirstToken);
+    } else if (Arg == "IGNORE") {
+      fnIgnorePragma(PP, Introducer, FirstToken);
+    } else {
+      PANIC("unknown bombyx pragma %s", Arg.c_str());
+    }
   }
 };
 
@@ -266,7 +302,7 @@ int main(int argc, char *argv[]) {
           "   -V                      \t very verbose\n"
           "       --fdump-dot=<PASSES>\t Indices of passes to dump GraphViz "
           "output after, comma separated\n"
-          "       --fgen-driver       \t (HardCilk only) generate driver code"
+          "       --fgen-driver       \t (HardCilk only) generate driver code\n"
           "   -t, --target=<TARGET>\t Output backend. Use TARGET=help to print "
           "available\n",
           argv[0]);

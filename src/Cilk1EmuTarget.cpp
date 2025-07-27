@@ -67,7 +67,7 @@ void printOriginalSource(IRProgram &P, llvm::raw_ostream &out,
   for (auto &F : P) {
     if (F->Info.RootFun) {
       R.RemoveText(F->Info.RootFun->getSourceRange());
-    }
+    } 
   }
   R.getEditBuffer(SM.getMainFileID()).write(out);
 }
@@ -294,8 +294,13 @@ private:
       DstArgIt++;
     }
 
-    Indent() << "spawn<" << SpawnFnName << "_closure> sp" << SpawnCtr << "(sp"
+    if (ES->SN) {
+      Indent() << "spawn<" << SpawnFnName << "_closure> sp" << SpawnCtr << "(sp"
              << SpawnCtr << "c);\n\n";
+    } else {
+      Indent() << "cilk_spawn taskSpawn(sp" << SpawnCtr << "c.getTask(),std::shared_ptr<" << SpawnFnName << "_closure>(&sp"  << SpawnCtr << "c));\n"; 
+    }
+    
   }
 
   void visitStmt(IRStmt *S, IRBasicBlock *B) {
@@ -313,9 +318,13 @@ private:
     } else if (auto *RS = dyn_cast<ReturnIRStmt>(S)) {
       Indent();
       if (F->Info.IsTask) {
-        Out << "SEND_ARGUMENT(largs->k, ";
-        RS->RetVal->print(Out, C);
-        Out << ");\n";
+        if (RS->RetVal) {
+          Out << "SEND_ARGUMENT(largs->k, ";
+          RS->RetVal->print(Out, C);
+          Out << ");\n";
+        } else {
+          Out << "return;\n";
+        }
       } else {
         RS->print(Out, C);
         Out << ";\n";
@@ -344,7 +353,11 @@ public:
 
 void PrintCilk1Emu(IRProgram &P, llvm::raw_ostream &out, clang::ASTContext &C,
                    clang::CompilerInstance &CI) {
-  // 1. Print forward declarations of each function, include Cilk1 emulation
+  // 1. Print the original source file with the original root functions removed.
+  printOriginalSource(P, out, C, CI);
+  out << "\n";
+
+  // 2. Print forward declarations of each function, include Cilk1 emulation
   // file.
   out << "#include \"cilk_explicit.hh\"\n";
   for (auto &F : P) {
@@ -357,8 +370,6 @@ void PrintCilk1Emu(IRProgram &P, llvm::raw_ostream &out, clang::ASTContext &C,
       printClosureDecl(F.get(), out, C);
     }
   }
-  // 2. Print the original source file with the original root functions removed.
-  printOriginalSource(P, out, C, CI);
 
   // 3. Print the implementation of each function.
   for (auto &F : P) {

@@ -198,6 +198,10 @@ public:
       auto *bb = WorkList.front();
       WorkList.pop_front();
 
+      DBG {
+        llvm::outs() << "visit " << bb->getInd() << "\n";
+      }
+
       assert(PathLookup.find(bb) != PathLookup.end());
       if (PathLookup[bb] == 0)
         continue;
@@ -205,7 +209,9 @@ public:
       // we should only visit a path once, because sync continue blocks should
       // only have one parent
       // TODO: does this assumption make sense?
-      assert(!visited[path]);
+      if (visited[path]) { 
+        continue;
+      }
 
       std::set<IRVarRef> *inFrees = NULL;
       if (!bb->Succs.empty()) {
