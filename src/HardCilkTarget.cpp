@@ -575,10 +575,15 @@ void PrintHardCilkTask(llvm::raw_ostream &Out, clang::ASTContext &C,
         std::make_pair("spawnNext", SNDest->getName() + "_spawn_next"));
   }
 
+  bool first = true; 
   for (auto &[intfName, intfTy] : intfs) {
-    Out << "  hls::stream<" << intfTy << "> &" << intfName << ",\n";
+    if (!first) {
+      Out << ",\n";
+    }
+    Out << "  hls::stream<" << intfTy << "> &" << intfName;
+    first = false;
   }
-  Out << ") {\n\n";
+  Out << "\n) {\n\n";
 
   for (auto &[intfName, _] : intfs) {
     Out << "#pragma HLS INTERFACE mode = axis port = " << intfName << "\n";
